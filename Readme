@@ -1,0 +1,124 @@
+🏥 Federated Graph Neural Networks for Chronic Kidney Disease (CKD) Prediction
+📌 Project Overview
+
+This project focuses on Chronic Kidney Disease (CKD) prediction using Federated Learning (FL) combined with Graph Neural Networks (GNNs).
+To preserve data privacy across institutions, multiple hospital datasets are trained collaboratively without sharing raw patient data. Each hospital constructs its own patient graph, and model training is performed in a federated, non-IID setting.
+
+🛠️ Setup & Tools
+
+The following tools and technologies were used:
+
+Programming Language: Python
+
+IDE: Visual Studio Code (VS Code)
+
+Version Control: Git & GitHub
+
+Libraries & Frameworks:
+
+NumPy, Pandas
+
+Scikit-learn
+
+PyTorch
+
+PyTorch Geometric
+
+SciPy (for ARFF handling)
+
+The project folder is structured to clearly separate datasets, preprocessing scripts, graph construction, and federated training modules.
+
+📊 Dataset Collection
+
+UCI Machine Learning Repository: CKD dataset (ARFF format)
+
+Kaggle: CKD-related datasets (CSV format)
+
+Dataset documentation and feature descriptions were reviewed to ensure:
+
+Clinical relevance
+
+Compatibility with federated learning
+
+Feasibility of feature alignment across datasets
+
+🧹 Data Cleaning
+
+Converted UCI CKD dataset from ARFF to CSV
+
+Handled missing values using appropriate imputation strategies
+
+Removed inconsistencies and invalid records
+
+Standardized column naming conventions
+
+Cleaned datasets were saved as intermediate CSV files for reproducibility
+
+⚙️ Feature Preprocessing
+
+Identified and matched common clinical features across datasets
+
+Imputed missing values (numerical & categorical)
+
+Encoded class labels for CKD prediction
+
+Normalized numerical features
+
+Saved final cleaned and preprocessed CSV files
+
+🏥 Hospital Simulation (Federated, Non-IID Setting)
+
+To simulate a real-world healthcare scenario:
+
+Hospital-A: UCI CKD dataset
+
+Hospital-B & Hospital-C: Kaggle CKD datasets
+
+Each hospital:
+
+Maintains local data only
+
+Exhibits non-IID label distribution (realistic label skew)
+
+Performs its own train–validation split
+
+This setup closely mimics federated learning across independent medical institutions.
+
+🕸️ Graph Construction (GNN-Ready)
+
+Nodes: Individual patients
+
+Edges: Constructed using K-Nearest Neighbors (KNN) based on clinical similarity
+
+Node Features: Preprocessed clinical attributes
+
+Labels: CKD classification
+
+Graphs were created using PyTorch Geometric, ensuring:
+
+Compatibility with GNN models
+
+Readiness for federated training across hospitals
+
+Each hospital maintains its own graph, enabling privacy-preserving federated GNN training.
+
+🚀 Key Highlights
+
+Privacy-preserving federated learning
+
+Realistic non-IID hospital data simulation
+
+Graph-based patient modeling
+
+End-to-end pipeline: raw data → federated GNN-ready graphs
+
+📁 Project Structure (Example)
+├── data/
+│   ├── raw/
+│   ├── cleaned/
+│   └── processed/
+├── preprocessing/
+├── graph_construction/
+├── federated_training/
+├── requirements.txt
+└── README.md
