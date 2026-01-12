@@ -1,85 +1,64 @@
 import streamlit as st
-import pandas as pd
+from auth import login
 
-from pipeline_controller import run_pipeline
-from status_tracker import get_steps
-from privacy_guard import sanitize_metrics
-# from xai_engine import generate_xai
+from dashboard_admin import render_admin_dashboard
+from dashboard_doctor import render_doctor_dashboard
+from patient_data import render_patient_data
+from patient_history import render_patient_history
+from local_model_update import render_local_model_update
 
-# ---------------- PAGE CONFIG ----------------
-st.set_page_config(layout="wide", page_title="Clinical Federated Learning Dashboard")
+st.set_page_config(page_title="Clinical FL Dashboard", layout="wide")
 
-# ---------------- HEADER ----------------
-col1, col2, col3 = st.columns([1,6,1])
+# ------------------------------------
+# SESSION INIT
+# ------------------------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-with col1:
-    st.markdown("👤 Dashboard")
+if not st.session_state.logged_in:
+    login()
+    st.stop()
 
-with col2:
-    st.markdown("<h2 style='text-align:center;'>Clinical Federated Learning Dashboard</h2>", unsafe_allow_html=True)
+# ------------------------------------
+# SIDEBAR (ROLE-BASED)
+# ------------------------------------
+with st.sidebar:
+    st.title("🧭 Navigation")
 
-with col3:
-    st.button("Login / Logout")
+    if st.session_state.role == "doctor":
+        if st.button("📊 Dashboard"):
+            st.session_state.page = "doctor_dashboard"
+        if st.button("🧑‍⚕️ Patient Data Input"):
+            st.session_state.page = "patient_input"
+        if st.button("📜 History"):
+            st.session_state.page = "history"
 
-st.divider()
+    if st.session_state.role == "admin":
+        if st.button("📊 Dashboard"):
+            st.session_state.page = "admin_dashboard"
+        if st.button("🔄 Local Model Update"):
+            st.session_state.page = "model_update"
 
-# ---------------- SIDEBAR ----------------
-st.sidebar.header("📂 Data Input")
+    if st.button("🚪 Logout"):
+        st.session_state.clear()
+        st.rerun()
 
-uploaded_file = st.sidebar.file_uploader("Upload CSV / Excel", type=["csv","xlsx"])
+# ------------------------------------
+# PAGE ROUTING
+# ------------------------------------
+page = st.session_state.get("page", "")
 
-st.sidebar.subheader("Select Options")
-attributes = st.sidebar.multiselect(
-    "Attributes",
-    ["Age", "BP", "Creatinine", "Hemoglobin", "Glucose"]
-)
+if page == "doctor_dashboard":
+    render_doctor_dashboard()
 
-columns = st.sidebar.multiselect(
-    "Columns",
-    ["Column A", "Column B", "Column C"]
-)
+elif page == "admin_dashboard":
+    render_admin_dashboard()
 
-queries = st.sidebar.multiselect(
-    "Queries",
-    ["Query 1", "Query 2"]
-)
+elif page == "patient_input":
+    render_patient_data()
 
-st.sidebar.subheader("Selected Requests")
-st.sidebar.write(attributes + columns + queries)
+elif page == "history":
+    render_patient_history()
 
-# ---------------- MAIN AREA ----------------
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-    st.success(f"Dataset Loaded: {df.shape[0]} rows × {df.shape[1]} columns")
-
-    if st.button("🚀 Run Federated Pipeline"):
-        raw_metrics = run_pipeline()
-        metrics = sanitize_metrics(raw_metrics)
-
-        # ---------- KPI CARDS ----------
-        k1, k2, k3 = st.columns(3)
-
-        k1.metric("Accuracy (Noised)", f"{metrics['noised_accuracy']}%")
-        k2.metric("Time of Update", metrics["time_update"])
-        k3.metric("Time of Analysis", metrics["time_analysis"])
-
-        # ---------- PIPELINE STEPS ----------
-        st.subheader("Federated Learning Pipeline")
-        step_cols = st.columns(6)
-
-        for i, col in enumerate(step_cols, start=1):
-            status = get_steps()[i]
-            col.info(f"Step {i}\n{status}")
-
-        # ---------- RESULTS ----------
-        st.subheader("Results / Prediction")
-        st.success("Global Model Ready")
-        st.write(f"**Diagnosis:** {raw_metrics['diagnosis']}")
-        st.write(f"**Noised Accuracy:** {metrics['noised_accuracy']}% (ε={metrics['epsilon']})")
-
-        # ---------- XAI ----------
-        # st.subheader("Explainable AI (XAI)")
-        # for exp in generate_xai():
-        #     st.write("•", exp)
-else:
-    st.info("Please upload a dataset to begin.")
+elif page == "model_update":
+    render_local_model_update()
