@@ -1,47 +1,128 @@
 import streamlit as st
 
-# ---------------- SESSION STATE ----------------
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-if "role" not in st.session_state:
-    st.session_state.role = None
-
-if "username" not in st.session_state:
-    st.session_state.username = None
-
-
-USERS = {
-    "doctor": {"username": "doctor", "password": "doctor123"},
-    "admin": {"username": "admin", "password": "admin123"},
-}
-
-
 def login():
-    placeholder = st.empty()
+    st.set_page_config(page_title="Clinical Login", page_icon="🔐", layout="wide")
 
-    with placeholder.form(key="login_form_unique"):
-        st.subheader("🔐 Dashboard Login")
+    # # ---------- SESSION ----------
+    # if "logged_in" not in st.session_state:
+    #     st.session_state.logged_in = False
+    # if "role" not in st.session_state:
+    #     st.session_state.role = "Doctor"
 
-        role = st.selectbox("Login as", ["Doctor", "Admin"])
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+    USERS = {
+        "Doctor": {"ID": "41568", "password": "doctor123"},
+        "Admin": {"ID": "56987", "password": "admin123"},
+    }
 
-        submit = st.form_submit_button("Login")
+    # ---------- CSS ----------
+    st.markdown("""
+    <style>
+    html, body, [data-testid="stAppViewContainer"], .stApp {
+        height: 100%;
+        overflow: hidden !important;
+    }
 
-    if submit:
-        role_key = role.lower()
+    [data-testid="stMainBlockContainer"] {
+        padding-top: 0rem !important;
+        padding-bottom: 0rem !important;
+        overflow: hidden !important;
+    }
 
-        if (
-            username == USERS[role_key]["username"]
-            and password == USERS[role_key]["password"]
-        ):
-            st.session_state.logged_in = True
+    .stApp {
+        background-color: #eef6fb;
+    }
+
+    .square-box {
+        width: 300px;
+        padding: 18px;
+        background-color: #eef6fb;
+        border-radius: 10px;
+        border: 1px solid #e5eef7;
+        margin: auto;
+        margin-top: 60px;
+        text-align: center;
+    }
+
+
+    .square-box .avatar {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        background: #1f6feb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 32px;
+        margin: auto;
+        margin-bottom: 14px;
+    }
+
+    .title {
+        font-size: 22px;
+        font-weight: 600;
+        color: #1f6feb;
+        margin-bottom: 10px;
+        text-align: center
+    }
+
+    .subtitle {
+        font-size: 14px;
+        color: #6b7280;
+        margin-bottom: 18px;
+        text-align: center
+    }
+
+    .stTextInput > div > div > input {
+        text-align: left;
+    }
+
+    .stButton > button {
+        width: 100%;
+        height: 42px;
+        background-color: #1f6feb;
+        color: white;
+        border-radius: 10px;
+        margin-top: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ---------- CENTER ----------
+    _, center, _ = st.columns([1, 1.3, 1])
+
+    with center:
+        # REAL container (owns widgets)
+        with st.container():
+            # Visual square wrapper
+            st.markdown("<div class='square-box'>" \
+            "<div class='avatar'>👤</div>", unsafe_allow_html=True)
+            st.markdown("<div class='title'>Choose Account Type</div>", unsafe_allow_html=True)
+
+            role = st.radio(
+                "",
+                ["Doctor", "Admin"],
+                horizontal=True,
+                label_visibility="collapsed"
+            )
             st.session_state.role = role
-            st.session_state.username = username
 
-            placeholder.empty()
-            st.success(f"{role} login successful")
-            st.rerun()
-        else:
-            st.error("❌ Invalid username or password")
+            st.markdown(
+                f"<div class='subtitle'>Hello {role.lower()}! Please login</div>",
+                unsafe_allow_html=True
+            )
+
+            email = st.text_input("ID")
+            password = st.text_input("Password", type="password")
+
+            if st.button("Login"):
+                user = USERS.get(role)
+                if user and email == user["ID"] and password == user["password"]:
+                    st.success("Login successful")
+                    st.session_state.logged_in = True
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials")
+
+            # Close visual wrapper
+            st.markdown("</div>", unsafe_allow_html=True)
