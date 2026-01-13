@@ -95,8 +95,9 @@ def login():
         # REAL container (owns widgets)
         with st.container():
             # Visual square wrapper
-            st.markdown("<div class='square-box'>" \
+            st.markdown("<div class='square-box'>"
             "<div class='avatar'>👤</div>", unsafe_allow_html=True)
+
             st.markdown("<div class='title'>Choose Account Type</div>", unsafe_allow_html=True)
 
             role = st.radio(

@@ -1,21 +1,17 @@
 import streamlit as st
-from datetime import datetime, timedelta
 
-def render_doctor_dashboard():
-    st.title("🧑‍⚕️ Doctor Dashboard")
-    st.divider()
+def doctor_dashboard():
+    st.title("🩺 Doctor Dashboard")
 
-    last_update = datetime(2026, 1, 10)
-    next_update = last_update + timedelta(days=30)
+    st.success("Welcome Doctor 👋")
 
-    c1, c2 = st.columns(2)
-    c1.info(f"Last Global Model Update\n\n{last_update.strftime('%d %b %Y')}")
-    c2.warning(f"Next Update Expected\n\n{next_update.strftime('%d %b %Y')}")
+    st.subheader("Doctor Actions")
+    st.write("• Enter patient data")
+    st.write("• Predict CKD")
+    st.write("• View patient history")
 
-    st.subheader("📘 Usage Guide")
-    st.markdown("""
-    - Enter patient data to get CKD risk prediction.
-    - Predictions use the global federated model.
-    - Patient data is not stored centrally.
-    - Local model details are hidden for privacy.
-    """)
+    st.markdown("---")
+
+    if st.button("🚪 Logout"):
+        st.session_state.clear()
+        st.rerun()
