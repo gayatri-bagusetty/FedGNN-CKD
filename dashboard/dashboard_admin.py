@@ -3,6 +3,8 @@ import pandas as pd
 import mysql.connector
 from mysql.connector import Error
 from datetime import datetime
+# --- IMPORT THE NEW MODULE ---
+from local_model_update import show_local_model_update
 
 # --- 1. Database Connection Logic ---
 def get_db_connection():
@@ -126,8 +128,8 @@ def admin_dashboard():
 
     # --- LOCAL MODEL UPDATE PAGE ---
     elif choice == "Local Model Update":
-        st.title("🔄 Federated Model Training")
-        st.write("Triggering Global Neural Network training via federated nodes...")
+        # CALL THE IMPORTED FUNCTION HERE
+        show_local_model_update()
 
     # --- MANAGE DOCTORS PAGE ---
     elif choice == "Manage Doctors":
@@ -152,7 +154,7 @@ def admin_dashboard():
                     hosp = st.text_input("Hospital")
                     pos = st.text_input("Position")
 
-                submit_btn = st.form_submit_button("Add User to System", type="primary")
+                submit_btn = st.form_submit_button("Add User Details", type="primary")
                 
                 if submit_btn:
                     if doc_name and user_id and password:
