@@ -1,105 +1,105 @@
 import streamlit as st
 import pandas as pd
+import mysql.connector
+from mysql.connector import Error
 from datetime import datetime
 
+# --- 1. Database Connection Logic ---
+def get_db_connection():
+    try:
+        connection = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="1997",  # Your specific password
+            database="clinical_db"
+        )
+        return connection
+    except Error as e:
+        st.error(f"Database Connection Error: {e}")
+        return None
+
+def verify_user(role, user_id, password):
+    conn = get_db_connection()
+    if conn:
+        cursor = conn.cursor(dictionary=True) 
+        query = "SELECT * FROM users WHERE role = %s AND user_id = %s AND password = %s"
+        cursor.execute(query, (role, user_id, password))
+        user = cursor.fetchone() 
+        conn.close()
+        return user 
+    return None
+
 def admin_dashboard():
-    # --- 1. Page Configuration ---
+    # --- 2. Page Configuration & Enhanced CSS ---
     st.set_page_config(page_title="Admin Panel | NephroCare AI", layout="wide")
 
-    # --- 2. Enhanced CSS (Boxed Sidebar & Admin Cards) ---
     st.markdown("""
         <style>
-        /* Sidebar Styling */
+        header { 
+            height: 0rem !important; 
+            background-color: transparent !important; 
+        }
+        [data-testid="stDecoration"] { display: none; }
+        [data-testid="stMainBlockContainer"] {
+            padding-top: 0rem !important; 
+            margin-top: 20px !important; 
+            padding-bottom: 2rem !important;
+        }
         [data-testid="stSidebar"] { background-color: #f0f2f6; }
-        
-        /* Boxed Radio Buttons for Sidebar */
-        div.row-widget.stRadio > div { flex-direction: column; gap: 15px; padding-top: 20px; }
-        div.row-widget.stRadio div[role="radiogroup"] > label {
-            background-color: #ffffff; border: 1px solid #d1d5db; padding: 10px 15px;
-            border-radius: 8px; cursor: pointer; width: 100%; display: flex;
-            align-items: center; transition: all 0.2s ease-in-out; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        .stButton > button {
+            width: 100% !important;
+            border-radius: 8px !important;
+            border: 1px solid #d1d5db !important;
+            padding: 10px !important;
+            margin-bottom: 5px;
         }
-        div.row-widget.stRadio div[role="radiogroup"] > label:hover { 
-            background-color: #f9fafb; border-color: #9ca3af; transform: translateY(-1px); 
-        }
-        div.row-widget.stRadio div[role="radiogroup"] > label[data-selected="true"] {
-            background-color: #e5efff !important; border: 2px solid #007bff !important; color: #007bff !important;
-        }
-        div.row-widget.stRadio div[role="radiogroup"] > label > div:first-child { display: none; }
-        div.row-widget.stRadio div[role="radiogroup"] > label p { font-size: 18px !important; font-weight: 500 !important; margin: 0; }
-
-        /* Admin Dashboard Cards */
         .card {
             background: white;
             padding: 20px;
             border-radius: 14px;
             border: 1px solid #e0e4e8;
             box-shadow: 0 4px 14px rgba(0,0,0,0.05);
+            margin-top: 0px !important; 
             margin-bottom: 20px;
         }
-        .metric-icon { font-size: 28px; margin-right: 12px; }
-        
-        /* Progress Steps */
-        .step {
-            padding: 12px;
-            border-radius: 30px;
-            color: white;
-            text-align: center;
-            font-weight: 600;
-            font-size: 14px;
+        .welcome-title {
+            font-size: 32px !important;
+            font-weight: bold !important;
+            color: #1f2937;
+            margin-top: 0px !important;
         }
-        .step1 { background: linear-gradient(90deg, #2DBEAA, #48D6C9); }
-        .step2 { background: linear-gradient(90deg, #4C7EF3, #6FA8FF); }
-        .step-inactive { background: linear-gradient(90deg, #A0AEC0, #CBD5E0); }
-        .step-warning { background: linear-gradient(90deg, #F6AD55, #ED8936); }
         </style>
         """, unsafe_allow_html=True)
 
-    # --- 3. Session State Initialization ---
+    # --- 3. Session State & Navigation ---
+    db_admin_name = st.session_state.get('full_name', 'Admin')
+    
     if "admin_page" not in st.session_state:
         st.session_state.admin_page = "Dashboard"
-    
-    admin_name = st.session_state.get("username", "Admin")
 
-    # --- 4. Sidebar Navigation (Boxed Style) ---
     with st.sidebar:
-        st.write(f"<p style='text-align: center;'>Welcome, <b>{admin_name}</b></p>", unsafe_allow_html=True)
+        st.title("🛡️ Admin Portal")
+        st.write(f"Logged in as: **{db_admin_name}**") 
         st.markdown("---")
         
-        with st.sidebar:
+        if st.button("📊 Dashboard"):
+            st.session_state.admin_page = "Dashboard"
+        if st.button("🔄 Local Model Update"):
+            st.session_state.admin_page = "Local Model Update"
+        if st.button("👨‍⚕️ Manage Doctors"):
+            st.session_state.admin_page = "Manage Doctors"
+        if st.button("🚪 Logout"):
+            st.session_state.clear()
+            st.rerun()
 
-            if st.button("📊 Dashboard"):
-                st.session_state.admin_page = "Dashboard"
-
-            if st.button("🔄 Local Model Update"):
-                st.session_state.admin_page = "Local Model Update"
-
-            if st.button("👨‍⚕️ Manage Doctors"):
-                st.session_state.admin_page = "Manage Doctors"
-
-            if st.button("🚪 Logout"):
-                st.session_state.clear()
-                st.rerun()
-
-    # --- 5. Main Panel Logic ---
+    # --- 4. Main Panel Logic ---
     choice = st.session_state.admin_page
 
-    # --- LOGOUT LOGIC ---
-    if choice == "Logout":
-        st.session_state.clear()
-        st.rerun()
-
     # --- DASHBOARD PAGE ---
-    elif choice == "Dashboard":
-        
+    if choice == "Dashboard":
         st.markdown(f"""
         <div class="card">
-            <h2>Welcome back, {admin_name} 👋</h2>
-            <p style="color: #666;">
-                This portal manages the Federated Learning pipeline. Monitor model performance, 
-                track local updates from participating hospitals, and manage clinical staff access 
-                while ensuring Differential Privacy compliance.
-            </p>
+            <span class="welcome-title">Welcome back, {db_admin_name}! 👋</span>
         </div>
         """, unsafe_allow_html=True)
         
@@ -107,65 +107,82 @@ def admin_dashboard():
         with col1:
             with st.container(border=True):
                 st.subheader("System Guidelines")
+                st.write("This portal manages the Federated Learning pipeline. Monitor model performance, track local updates from participating hospitals, and manage clinical staff access.")
                 st.markdown("""
-                - **Model Updates:** Use the 'Local Model Update' tab to trigger and monitor GNN training.
+                - **Model Updates:** Use 'Local Model Update' to trigger GNN training.
                 - **Doctor Access:** Add or remove clinical staff in 'Manage Doctors'.
-                - **Privacy:** All updates are noise-injected (ε=2.0) to maintain patient anonymity.
+                - **Privacy:** Updates are noise-injected (ε=2.0) for anonymity.
                 """)
         with col2:
-            st.info("**Global Model Version:** v4.2.1\n\n**Connected Clients:** 8 Hospitals")
+            # Fetch real-time count from DB
+            conn = get_db_connection()
+            doc_count = 0
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'Doctor'")
+                doc_count = cursor.fetchone()[0]
+                conn.close()
+            st.info(f"**Global Model Version:** v4.2.1\n\n**Registered Doctors:** {doc_count}")
 
-    # --- LOCAL MODEL UPDATE ---
+    # --- LOCAL MODEL UPDATE PAGE ---
     elif choice == "Local Model Update":
         st.title("🔄 Federated Model Training")
-        
-        # Performance Metrics
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            st.markdown("""<div class="card"><b>Accuracy</b><br><span style="color:#28a745; font-size:20px;">98.7%</span><br><small>ε = 2.0 (DP)</small></div>""", unsafe_allow_html=True)
-        with m2:
-            st.markdown("""<div class="card"><b>Last Update</b><br><span style="font-size:20px;">2 mins ago</span><br><small>Sync: Global Aggregator</small></div>""", unsafe_allow_html=True)
-        with m3:
-            st.markdown("""<div class="card"><b>Compute Time</b><br><span style="font-size:20px;">15.4 secs</span><br><small>H100 Instance</small></div>""", unsafe_allow_html=True)
+        st.write("Triggering Global Neural Network training via federated nodes...")
 
-        st.subheader("Training Progress Pipeline")
-        step_cols = st.columns(7)
-        steps = [
-            ("Pre-processing", "step1"),
-            ("Local Training", "step2"),
-            ("Noise Injection", "step-inactive"),
-            ("Aggregation", "step-inactive"),
-            ("Validation", "step-inactive"),
-            ("Global Push", "step-warning"),
-            ("Pending", "step-inactive")
-        ]
-
-        for col, (label, style) in zip(step_cols, steps):
-            with col:
-                st.markdown(f"<div class='step {style}'>{label}</div>", unsafe_allow_html=True)
-        
-        st.markdown("---")
-        if st.button("Trigger Global Re-Aggregation", type="primary"):
-            st.toast("Aggregating local model weights...")
-
-    # --- MANAGE DOCTORS ---
+    # --- MANAGE DOCTORS PAGE ---
     elif choice == "Manage Doctors":
-        st.title("👨‍⚕️ Manage Doctors")
+        st.title("👨‍⚕️ Clinical Staff Management")
         
+        # --- REGISTRATION FORM SECTION (Database Insert) ---
         with st.container(border=True):
-            st.subheader("Register New Clinical User")
-            with st.form("add_doctor_form"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    d_name = st.text_input("Doctor Name")
-                    d_id = st.text_input("Registration ID")
-                    dept = st.text_input("Department", value="Nephrology")
-                with c2:
-                    hosp = st.text_input("Branch / Hospital")
-                    pos = st.selectbox("Position", ["Junior Doctor", "Senior Doctor", "Consultant", "Specialist"])
+            st.subheader("Register New Doctor / User")
+            with st.form("doctor_reg_form", clear_on_submit=True):
+                col_a, col_b, col_c = st.columns(3)
                 
-                if st.form_submit_button("Add Doctor to System", type="primary"):
-                    if d_name and d_id:
-                        st.success(f"Doctor {d_name} (ID: {d_id}) has been granted access.")
+                with col_a:
+                    role_input = st.selectbox("Role", ["Doctor", "Admin"])
+                    doc_name = st.text_input("Doctor/Admin Name")
+                
+                with col_b:
+                    user_id = st.text_input("User ID (Unique)")
+                    password = st.text_input("Password", type="password")
+                
+                with col_c:
+                    dept = st.text_input("Department", value="Nephrology")
+                    hosp = st.text_input("Hospital")
+                    pos = st.text_input("Position")
+
+                submit_btn = st.form_submit_button("Add User to System", type="primary")
+                
+                if submit_btn:
+                    if doc_name and user_id and password:
+                        conn = get_db_connection()
+                        if conn:
+                            try:
+                                cursor = conn.cursor()
+                                # Query matches your DB structure: role, user_id, password, full_name
+                                query = "INSERT INTO users (role, user_id, password, full_name) VALUES (%s, %s, %s, %s)"
+                                cursor.execute(query, (role_input, user_id, password, doc_name))
+                                conn.commit()
+                                st.success(f"User {doc_name} registered successfully in the database!")
+                                st.rerun()
+                            except Error as e:
+                                st.error(f"Database Error: {e}")
+                            finally:
+                                conn.close()
                     else:
-                        st.error("Please fill in the required fields.")
+                        st.error("Please fill in Name, User ID, and Password.")
+
+        # --- TABLE SECTION (Database Select) ---
+        st.markdown("---")
+        st.subheader("📋 Registered Users Directory")
+        
+        conn = get_db_connection()
+        if conn:
+            # Fetch latest data for display
+            query = "SELECT user_id AS 'Registration ID', full_name AS 'Doctor Name', role AS 'Role' FROM users"
+            df = pd.read_sql(query, conn)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            conn.close()
+        else:
+            st.warning("Unable to retrieve directory. Check database connection.")
