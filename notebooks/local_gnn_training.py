@@ -1,135 +1,95 @@
 import torch
+import torch.nn.functional as F
 import os
-from sklearn.metrics import accuracy_score
 import sys
-import os
+from sklearn.metrics import accuracy_score
 
-# Add project 'data' folder to sys.path
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
-if PROJECT_ROOT not in sys.path:
-    sys.path.append(PROJECT_ROOT)
-
+# Ensure the models directory is in the path for importing GCN
+sys.path.append(os.path.abspath("../data"))
 from models.gcn_model import GCN
 
-# -------------------------------
-# DEVICE
-# -------------------------------
+# Check Device (CPU/GPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# -------------------------------
-# EVALUATION
-# -------------------------------
-def evaluate_model(model, graph):
-    """Evaluate a model on a PyG graph and return accuracy."""
-    model.eval()
-    graph = graph.to(device)
-    with torch.no_grad():
-        logits = model(graph.x, graph.edge_index)
-        preds = logits.argmax(dim=1).cpu()
-        labels = graph.y.cpu()
-    return accuracy_score(labels, preds)
-
-
-# -------------------------------
-# TRAIN SINGLE GRAPH
-# -------------------------------
-def train_single_graph(graph, global_model=None, epochs=50, lr=0.01, hidden_dim=32):
+def train_local_model(graph_path, epochs=100, lr=0.01):
     """
-    Train a local GCN on one graph.
-    If a global_model is provided, use it as initial weights.
+    Loads a hospital graph and trains a local GCN model.
     """
-    input_dim = graph.num_node_features
-    output_dim = 2
+    if not os.path.exists(graph_path):
+        print(f"Error: Graph file {graph_path} not found.")
+        return None
 
-    # Use provided global model or create a new one
-    if global_model is not None:
-        model = global_model.to(device)
-    else:
-        model = GCN(input_dim=input_dim, hidden_dim=hidden_dim, output_dim=output_dim).to(device)
+    # Load graph to device
+    graph = torch.load(graph_path, weights_only=False).to(device)
+
+    # Initialize Model
+    model = GCN(
+        input_dim=graph.num_node_features,
+        hidden_dim=32,
+        output_dim=2
+    ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = torch.nn.CrossEntropyLoss()
 
+    # Training Loop
     model.train()
     for epoch in range(epochs):
         optimizer.zero_grad()
-        out = model(graph.x.to(device), graph.edge_index.to(device))
-        loss = criterion(out, graph.y.to(device))
+        out = model(graph.x, graph.edge_index)
+        loss = criterion(out, graph.y)
         loss.backward()
         optimizer.step()
 
-        if epoch % 10 == 0:
-            print(f"Epoch {epoch:03d} | Loss: {loss.item():.4f}")
+        if epoch % 20 == 0:
+            print(f"[{os.path.basename(graph_path)}] Epoch {epoch:03d} | Loss: {loss.item():.4f}")
 
-    acc = evaluate_model(model, graph)
-    return model, acc
+    return model
 
-
-# -------------------------------
-# LEGACY WRAPPER
-# -------------------------------
-def train_with_global_weights(graph, model=None, epochs=50, lr=0.01, hidden_dim=32):
-    """Wrapper for admin/dashboard compatibility."""
-    return train_single_graph(graph, global_model=model, epochs=epochs, lr=lr, hidden_dim=hidden_dim)
-
-
-# -------------------------------
-# LOCAL TRAINING PIPELINE
-# -------------------------------
-def train_local_pipeline(new_graph=None, global_model=None, epochs=50, lr=0.01, hidden_dim=32):
+def evaluate_model(model, graph_path):
     """
-    ADMIN PIPELINE PATTERN:
-    - If new_graph + global_model provided → train only that graph
-    - Else → load default hospital graphs (A, B, C) and train them
+    Evaluates the performance of a model on a given graph.
     """
+    if model is None or not os.path.exists(graph_path):
+        return 0.0
+
+    graph = torch.load(graph_path, weights_only=False).to(device)
+    model.eval()
+
+    with torch.no_grad():
+        logits = model(graph.x, graph.edge_index)
+        preds = logits.argmax(dim=1).cpu()
+        labels = graph.y.cpu()
+
+    return accuracy_score(labels, preds)
+
+def main():
+    # 1. Define paths
+    graph_dir = "../data/graph"
+    model_save_dir = "../data/models"
+    os.makedirs(model_save_dir, exist_ok=True)
+
+    hospitals = ['A', 'B', 'C']
     trained_models = {}
 
-    # ---- ADMIN PIPELINE MODE ----
-    if new_graph is not None:
-        print("\n--- Training using provided graph ---")
-        model, acc = train_single_graph(
-            new_graph,
-            global_model=global_model,
-            epochs=epochs,
-            lr=lr,
-            hidden_dim=hidden_dim
-        )
-        trained_models["new_graph"] = {"model": model, "accuracy": acc}
-        print(f"Local accuracy: {acc:.4f}")
-        return trained_models
-
-    # ---- DEFAULT HOSPITAL MODE ----
-    print("\n--- Training default hospital graphs ---")
-    graph_dir = "../data/graph"
-    hospitals = ["A", "B", "C"]
-
+    # 2. Train and Evaluate for each hospital
     for h in hospitals:
         graph_path = os.path.join(graph_dir, f"graph_{h}.pt")
-        if not os.path.exists(graph_path):
-            print(f"Graph not found: {graph_path}")
-            continue
+        print(f"\n--- Starting Training for Hospital {h} ---")
+        
+        model = train_local_model(graph_path)
+        
+        if model:
+            acc = evaluate_model(model, graph_path)
+            print(f"Hospital {h} Accuracy: {acc:.4f}")
+            
+            # 3. Save weights (State Dict)
+            save_path = os.path.join(model_save_dir, f"model_{h}.pth")
+            torch.save(model.state_dict(), save_path)
+            trained_models[h] = model
 
-        print(f"\nHospital {h}")
-        graph = torch.load(graph_path, weights_only=False)
+    print("\nLocal models saved successfully in ../data/models/")
 
-        model, acc = train_single_graph(
-            graph,
-            global_model=global_model,
-            epochs=epochs,
-            lr=lr,
-            hidden_dim=hidden_dim
-        )
-
-        trained_models[h] = {"model": model, "accuracy": acc}
-        print(f"Hospital {h} accuracy: {acc:.4f}")
-
-    return trained_models
-
-
-# -------------------------------
-# TEST
-# -------------------------------
 if __name__ == "__main__":
-    results = train_local_pipeline()
-    print("Local training completed.")
+    main()

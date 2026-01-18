@@ -1,122 +1,80 @@
 import torch
 import os
-import sys
 import copy
+import sys
 
-# -------------------------------------------------
-# PATH
-# -------------------------------------------------
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(current_dir, "../data"))
+# Add project path to access the model architecture
+sys.path.append(os.path.abspath("../data"))
 from models.gcn_model import GCN
 
-# -------------------------------------------------
-# DEVICE
-# -------------------------------------------------
+# Set Device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
+print(f"Server acting on device: {device}")
 
-
-# -------------------------------------------------
-# FEDAVG CORE
-# -------------------------------------------------
-def fedavg(models):
+def fedavg(ldp_models):
     """
-    Standard FedAvg aggregation.
-    models: list of PyTorch models
+    Aggregates LDP-protected local models into a global model update
+    using Federated Averaging (FedAvg).
+
+    Args:
+        ldp_models (list): List of LDP-trained PyTorch models.
+
+    Returns:
+        global_model (torch.nn.Module): The newly aggregated global model.
     """
-    global_model = copy.deepcopy(models[0])
-    global_dict = global_model.state_dict()
+    # Initialize global model with the same architecture as the first local model
+    global_model = copy.deepcopy(ldp_models[0])
+    global_state = global_model.state_dict()
 
-    for key in global_dict.keys():
-        global_dict[key] = torch.stack(
-            [m.state_dict()[key].float() for m in models],
-            dim=0
-        ).mean(dim=0)
+    # Iterate through each parameter (weights and biases)
+    for key in global_state.keys():
+        # Stack the same parameter from all models and calculate the mean
+        # Note: .float() ensures precision during averaging
+        stacked_params = torch.stack([model.state_dict()[key].float() for model in ldp_models])
+        global_state[key] = torch.mean(stacked_params, dim=0)
 
-    global_model.load_state_dict(global_dict)
+    # Load the averaged parameters back into the global model structure
+    global_model.load_state_dict(global_state)
     return global_model
 
-
-# -------------------------------------------------
-# MAIN ADMIN PIPELINE
-# -------------------------------------------------
-def fedavg_pipeline(
-        new_noised_model=None,
-        old_global_model=None
-):
-    """
-    ADMIN PIPELINE PATTERN
-
-    Case 1:
-        new_noised_model provided
-        → aggregate with old global model
-        → replace global model
-
-    Case 2:
-        no input
-        → aggregate hospital LDP models
-    """
-
+def main():
+    # 1. Setup Paths
     model_dir = "../data/models"
-    os.makedirs(model_dir, exist_ok=True)
+    graph_sample_path = "../data/graph/graph_A.pt"
 
-    # =====================================================
-    # CASE 1 — CONTINUAL UPDATE MODE
-    # =====================================================
-    if new_noised_model is not None and old_global_model is not None:
+    if not os.path.exists(graph_sample_path):
+        print("Error: Sample graph not found. Cannot determine input dimensions.")
+        return
 
-        print("\n--- Aggregating new update with global model ---")
+    # 2. Initialize architecture
+    # We load a sample graph strictly to define the input_dim (features)
+    sample_graph = torch.load(graph_sample_path, weights_only=False)
+    input_dim = sample_graph.num_node_features
+    
+    # Initialize empty model instances
+    model_A = GCN(input_dim, 32, 2).to(device)
+    model_B = GCN(input_dim, 32, 2).to(device)
+    model_C = GCN(input_dim, 32, 2).to(device)
 
-        aggregated_model = fedavg(
-            [old_global_model, new_noised_model]
-        )
+    # 3. Load the LDP-Protected weights sent by hospitals
+    try:
+        model_A.load_state_dict(torch.load(f"{model_dir}/model_A_ldp.pth"))
+        model_B.load_state_dict(torch.load(f"{model_dir}/model_B_ldp.pth"))
+        model_C.load_state_dict(torch.load(f"{model_dir}/model_C_ldp.pth"))
+        print("Successfully loaded LDP-protected local models.")
+    except FileNotFoundError as e:
+        print(f"Error: Missing local model files. {e}")
+        return
 
-        torch.save(
-            aggregated_model.state_dict(),
-            os.path.join(model_dir, "global_model.pth")
-        )
+    # 4. Perform Federated Averaging
+    print("Aggregating models via FedAvg...")
+    global_model = fedavg([model_A, model_B, model_C])
 
-        print("Global model updated and replaced.")
+    # 5. Save Global Model
+    save_path = f"{model_dir}/global_model.pth"
+    torch.save(global_model.state_dict(), save_path)
 
-        return aggregated_model
+    print(f"Global model update created and stored at: {save_path}")
 
-
-    # =====================================================
-    # CASE 2 — INITIAL FEDERATED ROUND
-    # =====================================================
-    print("\n--- Aggregating hospital LDP models ---")
-
-    hospital_models = []
-
-    for h in ["A", "B", "C"]:
-        path = os.path.join(model_dir, f"model_{h}_ldp.pth")
-
-        if not os.path.exists(path):
-            print(f"Missing {path}")
-            continue
-
-        model = torch.load(path, weights_only=False)
-        hospital_models.append(model)
-
-    if len(hospital_models) == 0:
-        raise RuntimeError("No hospital models found for FedAvg")
-
-    global_model = fedavg(hospital_models)
-
-    torch.save(
-        global_model.state_dict(),
-        os.path.join(model_dir, "global_model.pth")
-    )
-
-    print("Initial global model created.")
-
-    return global_model
-
-
-# -------------------------------------------------
-# TEST
-# -------------------------------------------------
 if __name__ == "__main__":
-    global_model = fedavg_pipeline()
-    print("FedAvg completed.")
+    main()
