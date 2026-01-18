@@ -121,42 +121,69 @@ def doctor_dashboard():
         st.subheader("🔬 Clinical Diagnostic Analysis")
         with st.form("ckd_form"):
             col1, col2, col3 = st.columns(3)
-            with col1:
-                st.markdown("##### Basic Info")
-                name = st.text_input("Patient Full Name")
-                age = st.number_input("Age", 1, 120, 45)
-                bp = st.number_input("Blood Pressure (mm/Hg)", 50, 200, 80)
-                sg = st.selectbox("Specific Gravity", [1.005, 1.010, 1.015, 1.020, 1.025])
-            with col2:
-                st.markdown("##### Lab Results")
-                alb = st.selectbox("Albumin (0-5)", [0, 1, 2, 3, 4, 5])
-                sug = st.selectbox("Sugar (0-5)", [0, 1, 2, 3, 4, 5])
-                sc = st.number_input("Serum Creatinine", 0.0, 15.0, 1.2)
-                hemo = st.number_input("Hemoglobin (gms)", 3.0, 18.0, 12.0)
-            with col3:
-                st.markdown("##### Blood Counts")
-                pcv = st.number_input("Packed Cell Volume (%)", 10, 60, 40)
-                rbc = st.number_input("RBC Count (m/uL)", 2.0, 8.0, 4.5)
-                htn = st.selectbox("Hypertension", ["No", "Yes"])
-                dm = st.selectbox("Diabetes Mellitus", ["No", "Yes"])
+        
+        with col1:
+            st.markdown("##### Basic Info")
+            name = st.text_input("Patient Full Name")
+            age = st.number_input("Age", 1, 120, 45)
+            bp = st.number_input("Blood Pressure (mm/Hg)", 50, 200, 80)
+            sg = st.selectbox("Specific Gravity", [1.005, 1.010, 1.015, 1.020, 1.025])
+            htn = st.selectbox("Hypertension", ["No", "Yes"])
 
-            submitted = st.form_submit_button("Run Diagnostic Analysis", type="primary")
+        with col2:
+            st.markdown("##### Lab Results")
+            alb = st.selectbox("Albumin (0-5)", [0, 1, 2, 3, 4, 5])
+            sug = st.selectbox("Sugar (0-5)", [0, 1, 2, 3, 4, 5])
+            sc = st.number_input("Serum Creatinine", 0.0, 15.0, 1.2)
+            hemo = st.number_input("Hemoglobin (gms)", 3.0, 18.0, 12.0)
+            dm = st.selectbox("Diabetes Mellitus", ["No", "Yes"])
 
-        if submitted:
-            if not name:
-                st.error("Please enter the Patient Name before proceeding.")
-            else:
-                status = "CKD" if (alb > 2 or sc > 2.0 or hemo < 10) else "Non-CKD"
-                # Store data for the record table (excluding name per request)
-                new_row = {
-                    "Sl.No": len(st.session_state.patient_db) + 1,
-                    "Time of Entry": datetime.now().strftime("%H:%M:%S"), 
-                    "Age": age, "BP": bp, "SG": sg, 
-                    "Albumin": alb, "Sugar": sug, "Creatinine": sc, 
-                    "Hemoglobin": hemo, "Result": status
-                }
-                st.session_state.patient_db = pd.concat([st.session_state.patient_db, pd.DataFrame([new_row])], ignore_index=True)
-                st.success(f"Analysis completed for {name}!")
+        with col3:
+            st.markdown("##### Clinical Status")
+            pcv = st.number_input("Packed Cell Volume (%)", 10, 60, 40)
+            rbc = st.number_input("RBC Count (m/uL)", 2.0, 8.0, 4.5)
+            cad = st.selectbox("Coronary Artery Disease", ["No", "Yes"])
+            pe = st.selectbox("Pedal Edema", ["No", "Yes"])
+            ane = st.selectbox("Anemia", ["No", "Yes"])
+
+        submitted = st.form_submit_button("Run Diagnostic Analysis", type="primary")
+
+    if submitted:
+        if not name:
+            st.error("Please enter the Patient Name before proceeding.")
+        else:
+            # Map Binary Categorical Fields
+            bin_map = {"No": 0, "Yes": 1}
+            
+            # Prepare Features for GNN (Total of 14 features for the Global Model)
+            input_data = [
+                age, bp, sg, alb, sug, sc, hemo, pcv, rbc,
+                bin_map[htn], bin_map[dm], bin_map[cad], bin_map[pe], bin_map[ane]
+            ]
+
+            # Logic to store the data in the session state database
+            new_row = {
+                "Sl.No": len(st.session_state.patient_db) + 1,
+                "Time of Entry": datetime.now().strftime("%H:%M:%S"), 
+                "Age": age, 
+                "BP": bp, 
+                "SG": sg, 
+                "Albumin": alb, 
+                "Sugar": sug, 
+                "Creatinine": sc, 
+                "Hemoglobin": hemo,
+                "PCV": pcv,
+                "RBC": rbc,
+                "HTN": htn,
+                "DM": dm,
+                "CAD": cad,
+                "PE": pe,
+                "ANE": ane
+            }
+            
+            # Convert to DataFrame and update the record table
+            st.session_state.patient_db = pd.concat([st.session_state.patient_db, pd.DataFrame([new_row])], ignore_index=True)
+            st.success(f"Data for {name} has been successfully recorded in the system.")
 
     # --- RECORDS PAGE ---
     elif choice == "Records":

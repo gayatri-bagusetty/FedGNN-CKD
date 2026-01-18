@@ -8,24 +8,31 @@ def run(script):
 def run_pipeline():
     print("\n===== PIPELINE STARTED =====\n")
 
-    # STEP 1: Preprocessing (CSV already given)
+    # STEP 1: Preprocessing 
     run("preprocessing.py")
 
-    # STEP 2: Graph Construction
+    # STEP 2: Hospital Simulation (MISSING STEP - ADD THIS)
+    # This creates the ../data/processed/hospital_A, B, and C folders
+    run("hospital_simulation.py")
+
+    # STEP 3: Graph Construction
     run("graph_construction.py")
 
-    # STEP 3: Local GNN Training
+    # STEP 4: Local GNN Training
     run("local_gnn_training.py")
 
-    # STEP 4: Apply Local Differential Privacy
+    # STEP 5: Apply Local Differential Privacy
     run("local_ldp.py")
 
-    # STEP 5: Federated Averaging
+    # STEP 6: Federated Averaging
     run("fedavg_server.py")
 
-    # STEP 6: Global Model Testing
+    # STEP 7: Global Model Testing
     run("test_global_model.py")
 
+    # STEP 8: Explainable AI & Inference Test
+    run("inference_xai.py")
+    
     print("\n===== PIPELINE COMPLETED SUCCESSFULLY =====\n")
 
 if __name__ == "__main__":

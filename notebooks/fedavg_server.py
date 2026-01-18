@@ -3,78 +3,65 @@ import os
 import copy
 import sys
 
-# Add project path to access the model architecture
-sys.path.append(os.path.abspath("../data"))
-from models.gcn_model import GCN
+# Ensure the project structure is respected for imports
+sys.path.append(os.path.abspath(".."))
+from data.models.gcn_model import GCN
 
 # Set Device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Server acting on device: {device}")
+print(f"FedAvg Server active on: {device}")
 
 def fedavg(ldp_models):
     """
-    Aggregates LDP-protected local models into a global model update
-    using Federated Averaging (FedAvg).
-
-    Args:
-        ldp_models (list): List of LDP-trained PyTorch models.
-
-    Returns:
-        global_model (torch.nn.Module): The newly aggregated global model.
+    Performs Federated Averaging (FedAvg) on LDP-protected weights.
+    Aggregates Hospital A (UCI), B (Kaggle), and C (Synthetic).
     """
-    # Initialize global model with the same architecture as the first local model
     global_model = copy.deepcopy(ldp_models[0])
     global_state = global_model.state_dict()
 
-    # Iterate through each parameter (weights and biases)
     for key in global_state.keys():
-        # Stack the same parameter from all models and calculate the mean
-        # Note: .float() ensures precision during averaging
+        # Average the parameters across all three heterogeneous hospital models
         stacked_params = torch.stack([model.state_dict()[key].float() for model in ldp_models])
         global_state[key] = torch.mean(stacked_params, dim=0)
 
-    # Load the averaged parameters back into the global model structure
     global_model.load_state_dict(global_state)
     return global_model
 
 def main():
-    # 1. Setup Paths
     model_dir = "../data/models"
-    graph_sample_path = "../data/graph/graph_A.pt"
+    # Use graph_A (UCI) as the reference for input dimensions (24 features)
+    graph_ref_path = "../data/graph/graph_A.pt"
 
-    if not os.path.exists(graph_sample_path):
-        print("Error: Sample graph not found. Cannot determine input dimensions.")
+    if not os.path.exists(graph_ref_path):
+        print("Error: Reference graph missing. Run graph_construction.py first.")
         return
 
-    # 2. Initialize architecture
-    # We load a sample graph strictly to define the input_dim (features)
-    sample_graph = torch.load(graph_sample_path, weights_only=False)
-    input_dim = sample_graph.num_node_features
+    # Load reference to determine architecture dimensions
+    ref_graph = torch.load(graph_ref_path, weights_only=False)
+    input_dim = ref_graph.num_node_features
     
-    # Initialize empty model instances
+    # Initialize model containers
     model_A = GCN(input_dim, 32, 2).to(device)
     model_B = GCN(input_dim, 32, 2).to(device)
     model_C = GCN(input_dim, 32, 2).to(device)
 
-    # 3. Load the LDP-Protected weights sent by hospitals
+    # Load LDP weights sent from the three hospitals
     try:
-        model_A.load_state_dict(torch.load(f"{model_dir}/model_A_ldp.pth"))
-        model_B.load_state_dict(torch.load(f"{model_dir}/model_B_ldp.pth"))
-        model_C.load_state_dict(torch.load(f"{model_dir}/model_C_ldp.pth"))
-        print("Successfully loaded LDP-protected local models.")
-    except FileNotFoundError as e:
-        print(f"Error: Missing local model files. {e}")
+        model_A.load_state_dict(torch.load(f"{model_dir}/model_A_ldp.pth", weights_only=True))
+        model_B.load_state_dict(torch.load(f"{model_dir}/model_B_ldp.pth", weights_only=True))
+        model_C.load_state_dict(torch.load(f"{model_dir}/model_C_ldp.pth", weights_only=True))
+        print(">>> Successfully received LDP-protected weights from all hospitals.")
+    except Exception as e:
+        print(f"Error loading hospital weights: {e}")
         return
 
-    # 4. Perform Federated Averaging
-    print("Aggregating models via FedAvg...")
+    print(">>> Executing Federated Aggregation (FedAvg)...")
     global_model = fedavg([model_A, model_B, model_C])
 
-    # 5. Save Global Model
-    save_path = f"{model_dir}/global_model.pth"
+    # Save the consolidated Global Model
+    save_path = os.path.join(model_dir, "global_model.pth")
     torch.save(global_model.state_dict(), save_path)
-
-    print(f"Global model update created and stored at: {save_path}")
+    print(f"Global Model successfully stored at: {save_path}")
 
 if __name__ == "__main__":
     main()

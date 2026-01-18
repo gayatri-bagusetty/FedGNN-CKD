@@ -2,10 +2,10 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 
-
 class GCN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
-        super().__init__()
+        super(GCN, self).__init__()
+        # Ensure the first layer uses input_dim (which will be 24)
         self.conv1 = GCNConv(input_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, output_dim)
 

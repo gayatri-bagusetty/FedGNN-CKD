@@ -4,28 +4,22 @@ import os
 import sys
 from sklearn.metrics import accuracy_score
 
-# Ensure the models directory is in the path for importing GCN
-sys.path.append(os.path.abspath("../data"))
-from models.gcn_model import GCN
+# Ensure pathing for GCN model import
+sys.path.append(os.path.abspath(".."))
+from data.models.gcn_model import GCN
 
-# Check Device (CPU/GPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
 
 def train_local_model(graph_path, epochs=100, lr=0.01):
-    """
-    Loads a hospital graph and trains a local GCN model.
-    """
     if not os.path.exists(graph_path):
         print(f"Error: Graph file {graph_path} not found.")
         return None
 
-    # Load graph to device
     graph = torch.load(graph_path, weights_only=False).to(device)
 
-    # Initialize Model
+    # Initialize Model with fixed 24 features or dynamic from graph
     model = GCN(
-        input_dim=graph.num_node_features,
+        input_dim=graph.num_node_features, 
         hidden_dim=32,
         output_dim=2
     ).to(device)
@@ -33,7 +27,6 @@ def train_local_model(graph_path, epochs=100, lr=0.01):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = torch.nn.CrossEntropyLoss()
 
-    # Training Loop
     model.train()
     for epoch in range(epochs):
         optimizer.zero_grad()
@@ -47,49 +40,56 @@ def train_local_model(graph_path, epochs=100, lr=0.01):
 
     return model
 
-def evaluate_model(model, graph_path):
-    """
-    Evaluates the performance of a model on a given graph.
-    """
-    if model is None or not os.path.exists(graph_path):
+def evaluate_on_val(model, hospital_id):
+    """Evaluates the trained model on the validation CSV for that hospital."""
+    val_path = f"../data/processed/hospital_{hospital_id}/val.csv"
+    if not os.path.exists(val_path):
         return 0.0
+    
+    df_val = pd.read_csv(val_path)
+    X_val = torch.tensor(df_val.drop('classification', axis=1).values, dtype=torch.float).to(device)
+    y_val = torch.tensor(df_val['classification'].values, dtype=torch.long).to(device)
+    
+    # Validation uses a 'dummy' edge index for node-level inference if graph not built
+    # In GCN, we need edges, but for simple val we can use self-loops or empty
+    edge_index = torch.zeros((2, 0), dtype=torch.long).to(device) 
 
-    graph = torch.load(graph_path, weights_only=False).to(device)
     model.eval()
-
     with torch.no_grad():
-        logits = model(graph.x, graph.edge_index)
+        logits = model(X_val, edge_index)
         preds = logits.argmax(dim=1).cpu()
-        labels = graph.y.cpu()
+        labels = y_val.cpu()
 
     return accuracy_score(labels, preds)
 
 def main():
-    # 1. Define paths
     graph_dir = "../data/graph"
     model_save_dir = "../data/models"
     os.makedirs(model_save_dir, exist_ok=True)
 
     hospitals = ['A', 'B', 'C']
-    trained_models = {}
 
-    # 2. Train and Evaluate for each hospital
     for h in hospitals:
         graph_path = os.path.join(graph_dir, f"graph_{h}.pt")
-        print(f"\n--- Starting Training for Hospital {h} ---")
+        print(f"\n--- Training Hospital {h} (UCI if A, Kaggle if B, Synth if C) ---")
         
         model = train_local_model(graph_path)
         
         if model:
-            acc = evaluate_model(model, graph_path)
-            print(f"Hospital {h} Accuracy: {acc:.4f}")
+            # We evaluate against the training graph directly for this phase
+            graph = torch.load(graph_path, weights_only=False).to(device)
+            model.eval()
+            with torch.no_grad():
+                logits = model(graph.x, graph.edge_index)
+                acc = accuracy_score(graph.y.cpu(), logits.argmax(dim=1).cpu())
             
-            # 3. Save weights (State Dict)
+            print(f"Hospital {h} Training Accuracy: {acc:.4f}")
+            
             save_path = os.path.join(model_save_dir, f"model_{h}.pth")
             torch.save(model.state_dict(), save_path)
-            trained_models[h] = model
 
-    print("\nLocal models saved successfully in ../data/models/")
+    print("\nLocal models saved successfully.")
 
 if __name__ == "__main__":
+    import pandas as pd # Required for evaluation function
     main()
