@@ -2,6 +2,7 @@ import streamlit as st
 import time
 import sys
 import os
+import io
 
 # -------------------------------------------------------
 # Path setup
@@ -10,7 +11,7 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
-from notebooks.pipeline_runner import run_pipeline
+from notebooks.admin_pipeline_runner import run_admin_flow
 
 
 def show_local_model_update():
@@ -186,27 +187,26 @@ def show_local_model_update():
         """, unsafe_allow_html=True)
 
     # -------------------------------------------------------
-    # 6. EXECUTION BUTTON (PIPELINE CONNECTED)
+    # 6. EXECUTION BUTTON (UPDATED)
     # -------------------------------------------------------
-    if st.button(
-    "🚀 Run Training Round",
-    type="primary",
-    disabled=uploaded_file is None
-    ):
-     with st.spinner("Running Federated Training Pipeline..."):
+    if st.button("🚀 Run Training Round", type="primary", disabled=uploaded_file is None):
 
-        # --- FIX: Change working directory to notebooks ---
-        original_cwd = os.getcwd()
-        notebooks_dir = os.path.join(ROOT_DIR, "notebooks")
-        os.chdir(notebooks_dir)
+        with st.spinner("Processing Pipeline..."):
+
+            import pandas as pd
+
+        # Read uploaded CSV directly
+        df = pd.read_csv(uploaded_file)
 
         try:
-            run_pipeline()
+            original_cwd = os.getcwd()
+            os.chdir(os.path.join(ROOT_DIR, "notebooks"))
+
+            noised_acc = run_admin_flow(df)
+
+            st.session_state.accuracy = f"{noised_acc:.2%}"
+            st.success("Global Model Updated Successfully!")
+            st.rerun()
+
         finally:
-            # Restore original working directory
             os.chdir(original_cwd)
-
-    # Update accuracy after pipeline finishes
-    st.session_state.accuracy = "98.9%"
-
-    st.success("Federated training completed successfully!")

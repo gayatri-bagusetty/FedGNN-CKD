@@ -3,44 +3,49 @@ import sys
 import copy
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score
 
-# Ensure the models directory is in the path for importing GCN
+# -------------------------------------------------
+# PATH SETUP
+# -------------------------------------------------
 sys.path.append(os.path.abspath("../data"))
 from models.gcn_model import GCN
 
-# Check Device
+# -------------------------------------------------
+# DEVICE
+# -------------------------------------------------
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-def load_graph(path):
-    """Loads the PyTorch Geometric graph to the active device."""
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Graph not found at {path}")
-    return torch.load(path, weights_only=False).to(device)
 
+# -------------------------------------------------
+# ACCURACY
+# -------------------------------------------------
 def evaluate(model, graph):
-    """Calculates accuracy for a GCN model on a specific graph."""
     model.eval()
+    graph = graph.to(device)
+
     with torch.no_grad():
         out = model(graph.x, graph.edge_index)
         preds = out.argmax(dim=1).cpu()
         labels = graph.y.cpu()
+
     return accuracy_score(labels, preds)
 
+
+# -------------------------------------------------
+# APPLY LDP
+# -------------------------------------------------
 def apply_ldp(model, epsilon, alpha=0.3):
     """
-    Applies Local Differential Privacy by adding Gaussian noise to model weights.
-    Higher epsilon = Less noise (Less privacy, more utility).
-    Lower epsilon = More noise (More privacy, less utility).
+    Adds Gaussian noise to model weights
     """
     noisy_model = copy.deepcopy(model)
-    for _, param in noisy_model.named_parameters():
+
+    for param in noisy_model.parameters():
         if not param.requires_grad:
             continue
 
-        # Standard deviation for noise based on privacy budget
         noise_std = alpha / epsilon
         noise = torch.normal(
             mean=0.0,
@@ -49,78 +54,150 @@ def apply_ldp(model, epsilon, alpha=0.3):
         ).to(device)
 
         param.data += noise
+
     return noisy_model
 
-def select_best_epsilon(clean_model, graph, epsilons, alpha=0.8, hospital_name="Hospital"):
-    """
-    Iterates through epsilon values to find the best balance 
-    between privacy and model accuracy.
-    """
-    clean_acc = evaluate(clean_model, graph)
-    print(f"\n--- {hospital_name} Optimization ---")
-    print(f"Clean Accuracy: {clean_acc:.4f}")
 
-    best_score = -float("inf")
+# -------------------------------------------------
+# EPSILON SELECTION
+# -------------------------------------------------
+def select_best_epsilon(model, graph, epsilons, alpha=0.8, label="Node"):
+    clean_acc = evaluate(model, graph)
+
+    print(f"\n--- {label} LDP Optimization ---")
+    print(f"Clean accuracy: {clean_acc:.4f}")
+
+    best_score = -1e9
     best_eps = None
     best_model = None
-    noisy_accuracies = []
+    acc_list = []
+
     eps_max = max(epsilons)
 
     for eps in epsilons:
-        noisy_model = apply_ldp(clean_model, eps)
+        noisy_model = apply_ldp(model, eps)
         noisy_acc = evaluate(noisy_model, graph)
 
-        # Optimization Score: High accuracy is good, high epsilon (less privacy) is bad
         score = alpha * noisy_acc - (1 - alpha) * (eps / eps_max)
-        noisy_accuracies.append(noisy_acc)
+        acc_list.append(noisy_acc)
 
-        print(f"ε={eps:<3} | Noisy Acc={noisy_acc:.4f} | Score={score:.4f}")
+        print(f"ε={eps:<4} | acc={noisy_acc:.4f} | score={score:.4f}")
 
         if score > best_score:
             best_score = score
             best_eps = eps
             best_model = noisy_model
 
-    print(f"Result: Selected ε={best_eps} for {hospital_name}")
-    return best_model, best_eps, noisy_accuracies, clean_acc
+    print(f"Selected ε = {best_eps}")
 
-def plot_tradeoff(epsilons, accuracies, clean_acc, hospital_label):
-    """Visualizes the impact of privacy noise on model accuracy."""
-    plt.figure(figsize=(8, 5))
-    plt.plot(epsilons, accuracies, marker="o", color="blue", label="LDP Protected Accuracy")
-    plt.axhline(y=clean_acc, color="red", linestyle="--", label="Original Accuracy")
-    plt.xlabel("Epsilon (ε) - Privacy Budget")
-    plt.ylabel("Accuracy")
-    plt.title(f"Privacy–Utility Tradeoff ({hospital_label})")
-    plt.legend()
-    plt.grid(True, linestyle="--", alpha=0.7)
-    plt.show()
+    return best_model, best_eps, acc_list, clean_acc
 
-def main():
-    eps_values = [1.5, 2, 3, 4, 5]
-    hospitals = ['A', 'B', 'C']
-    graph_dir = "../data/graph"
-    model_dir = "../data/models"
 
-    for h in hospitals:
-        # 1. Load Data and Model
-        graph = load_graph(f"{graph_dir}/graph_{h}.pt")
-        model = GCN(graph.num_node_features, 32, 2).to(device)
-        model.load_state_dict(torch.load(f"{model_dir}/model_{h}.pth"))
+# -------------------------------------------------
+# MAIN LDP PIPELINE
+# -------------------------------------------------
+def ldp_pipeline(
+        trained_model=None,
+        graph=None,
+        eps_values=None
+):
+    """
+    ADMIN PIPELINE PATTERN
 
-        # 2. Optimize Epsilon
-        best_ldp_model, best_eps, accs, clean_acc = select_best_epsilon(
-            model, graph, eps_values, hospital_name=f"Hospital {h}"
+    If trained_model + graph provided:
+        → apply LDP
+        → return noisy model + accuracy
+
+    Else:
+        → apply LDP on default hospital models
+    """
+
+    if eps_values is None:
+        eps_values = [1.5, 2, 3, 4, 5]
+
+    results = {}
+
+    # =====================================================
+    # CASE 1 — ADMIN PIPELINE MODE
+    # =====================================================
+    if trained_model is not None and graph is not None:
+
+        print("\n--- Applying LDP to provided local model ---")
+
+        best_model, best_eps, accs, clean_acc = select_best_epsilon(
+            trained_model,
+            graph,
+            eps_values,
+            label="New Graph"
         )
 
-        # 3. Save the Optimized LDP Model
-        save_path = f"{model_dir}/model_{h}_ldp.pth"
-        torch.save(best_ldp_model.state_dict(), save_path)
-        
-        # 4. Show results
-        plot_tradeoff(eps_values, accs, clean_acc, f"Hospital {h}")
+        final_acc = evaluate(best_model, graph)
 
-    print("\nAll LDP-optimized models saved to ../data/models/")
+        return {
+            "model": best_model,
+            "epsilon": best_eps,
+            "accuracy": final_acc,
+            "clean_accuracy": clean_acc
+        }
 
+    # =====================================================
+    # CASE 2 — DEFAULT HOSPITAL MODE
+    # =====================================================
+    print("\n--- Applying LDP to hospital models ---")
+
+    model_dir = "../data/models"
+    graph_dir = "../data/graph"
+
+    hospitals = ["A", "B", "C"]
+
+    for h in hospitals:
+
+        print(f"\nHospital {h}")
+
+        graph_path = os.path.join(graph_dir, f"graph_{h}.pt")
+        model_path = os.path.join(model_dir, f"model_{h}.pth")
+
+        if not os.path.exists(graph_path) or not os.path.exists(model_path):
+            print("Missing model or graph — skipping")
+            continue
+
+        graph = torch.load(graph_path, weights_only=False).to(device)
+
+        model = GCN(
+            graph.num_node_features,
+            32,
+            len(torch.unique(graph.y))
+        ).to(device)
+
+        model.load_state_dict(torch.load(model_path))
+
+        best_model, best_eps, accs, clean_acc = select_best_epsilon(
+            model,
+            graph,
+            eps_values,
+            label=f"Hospital {h}"
+        )
+
+        final_acc = evaluate(best_model, graph)
+
+        torch.save(
+            best_model.state_dict(),
+            os.path.join(model_dir, f"model_{h}_ldp.pth")
+        )
+
+        results[h] = {
+            "model": best_model,
+            "epsilon": best_eps,
+            "accuracy": final_acc,
+            "clean_accuracy": clean_acc
+        }
+
+    return results
+
+
+# -------------------------------------------------
+# TEST
+# -------------------------------------------------
 if __name__ == "__main__":
-    main()
+    results = ldp_pipeline()
+    print("LDP completed.")
