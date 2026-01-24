@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import os
 import sys
 from sklearn.metrics import accuracy_score
+from resource_monitor import ResourceMonitor
 
 # Ensure pathing for GCN model import
 sys.path.append(os.path.abspath(".."))
@@ -10,22 +11,25 @@ from data.models.gcn_model import GCN
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def train_local_model(graph_path, epochs=100, lr=0.01):
+def train_local_model(graph_path, epochs=100, lr=0.01, hospital_name="Hospital"):
     if not os.path.exists(graph_path):
         print(f"Error: Graph file {graph_path} not found.")
         return None
 
     graph = torch.load(graph_path, weights_only=False).to(device)
 
-    # Initialize Model with fixed 24 features or dynamic from graph
     model = GCN(
-        input_dim=graph.num_node_features, 
+        input_dim=graph.num_node_features,
         hidden_dim=32,
         output_dim=2
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = torch.nn.CrossEntropyLoss()
+
+    # RESOURCE MONITOR
+    monitor = ResourceMonitor()
+    monitor.start_timer()
 
     model.train()
     for epoch in range(epochs):
@@ -35,8 +39,12 @@ def train_local_model(graph_path, epochs=100, lr=0.01):
         loss.backward()
         optimizer.step()
 
-        if epoch % 20 == 0:
-            print(f"[{os.path.basename(graph_path)}] Epoch {epoch:03d} | Loss: {loss.item():.4f}")
+    training_time = monitor.stop_timer()
+    memory_used = monitor.memory_usage_mb()
+
+    print(f"\n[{hospital_name}] RESOURCE USAGE")
+    print(f"Training Time   : {training_time:.2f} seconds")
+    print(f"Memory Usage    : {memory_used:.2f} MB")
 
     return model
 
@@ -71,22 +79,22 @@ def main():
 
     for h in hospitals:
         graph_path = os.path.join(graph_dir, f"graph_{h}.pt")
-        print(f"\n--- Training Hospital {h} (UCI if A, Kaggle if B, Synth if C) ---")
-        
-        model = train_local_model(graph_path)
-        
+        print(f"\n--- Training Hospital {h} ---")
+
+        model = train_local_model(
+            graph_path,
+            hospital_name=f"Hospital {h}"
+        )
+
         if model:
-            # We evaluate against the training graph directly for this phase
-            graph = torch.load(graph_path, weights_only=False).to(device)
-            model.eval()
-            with torch.no_grad():
-                logits = model(graph.x, graph.edge_index)
-                acc = accuracy_score(graph.y.cpu(), logits.argmax(dim=1).cpu())
-            
-            print(f"Hospital {h} Training Accuracy: {acc:.4f}")
-            
             save_path = os.path.join(model_save_dir, f"model_{h}.pth")
             torch.save(model.state_dict(), save_path)
+
+            # COMMUNICATION COST
+            from resource_monitor import ResourceMonitor
+            size_mb = ResourceMonitor.model_size_mb(save_path)
+            print(f"Model Communication Cost: {size_mb:.2f} MB")
+
 
     print("\nLocal models saved successfully.")
 
