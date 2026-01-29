@@ -3,5 +3,9 @@
         "./data",
         "./notebooks"
     ],
-    "python-envs.pythonProjects": []
+    "python-envs.pythonProjects": [],
+    "lldb.displayFormat": "auto",
+    "lldb.showDisassembly": "auto",
+    "lldb.dereferencePointers": true,
+    "lldb.consoleMode": "commands"
 }

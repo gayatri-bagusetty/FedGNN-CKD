@@ -19,23 +19,28 @@ class WrappedModel(torch.nn.Module):
         out = self.model(x, edge_index)
         return torch.softmax(out, dim=1)[:, 1] # Target CKD class probability
 
-# 3. CLINICAL REASONING ENGINE
+# --- Updated function in inference_xai.py ---
+
 def generate_clinical_description(prediction, prob, feat_imp):
     top_3 = [f[0].upper() for f in feat_imp[:3]]
-    status = "Chronic Kidney Disease (CKD)" if prediction == "CKD" else "Healthy (Non-CKD)"
-    
-    description = f"\n=== CLINICAL DIAGNOSTIC REPORT ===\n"
-    description += f"Status: {status}\n"
-    description += f"Confidence Score: {prob:.2%}\n\n"
-    description += f"EXPLANATION:\n"
-    
-    if prediction == "CKD":
-        description += f"Warning: High-risk patterns detected in {top_3[0]}, {top_3[1]}, and {top_3[2]}.\n"
-        description += "The patient node aligns with diseased clusters in the global federated graph."
+    is_positive = prob >= 0.50
+    # Reasoning logic - Clean text for web display
+    if is_positive:
+        reasoning = (
+            "Significant biomarker deviations detected. The GNN model identifies patterns "
+            "highly consistent with Chronic Kidney Disease clusters. Clinical correlation is advised."
+        )
     else:
-        description += f"Patient matches healthy clinical clusters.\n"
-        description += f"Stability in {top_3[0]}, {top_3[1]}, and {top_3[2]} was the primary factor."
-    return description
+        reasoning = (
+            "Biomarker levels are within stable physiological ranges. The patient profile "
+            "matches healthy clinical clusters within the latent space."
+        )
+
+    # Return a dictionary. This allows dashboard_doctor.py to access specific keys.
+    return {
+        "explanation": reasoning,
+        "primary_drivers": ", ".join(top_3)
+    }
 
 def run_inference_xai():
     # 4. FULL BIOMARKER LIST (24 Features)
@@ -56,13 +61,13 @@ def run_inference_xai():
     model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     model.eval()
 
-    # 6. TEST DATA (Scaled 24-feature vector for a healthy patient)
+    # 6. TEST DATA (Scaled 24-feature vector)
     healthy_test = [
         0.3, 0.4, 1.025, 0, 0, 1, 1, 0, 0, 0.5, 0.2, 0.1, 0.8, 0.4, 0.9, 0.85, 0.2, 0.75, 0, 0, 0, 1, 0, 0
     ]
     
     test_patient = torch.tensor([healthy_test], dtype=torch.float)
-    edge_index = torch.tensor([[0], [0]], dtype=torch.long) # Self-loop for inference
+    edge_index = torch.tensor([[0], [0]], dtype=torch.long) 
 
     # 7. XAI ENGINE INITIALIZATION
     wrapped_model = WrappedModel(model)
@@ -71,26 +76,37 @@ def run_inference_xai():
         algorithm=GNNExplainer(epochs=200),
         explanation_type='model',
         node_mask_type='attributes',
-        model_config=dict(mode='regression', task_level='node', return_type='raw'),
+        model_config=dict(
+            mode='binary_classification', # Updated to binary
+            task_level='node', 
+            return_type='raw'
+        ),
     )
 
     print(">>> GNNExplainer is analyzing the clinical biomarkers...")
     explanation = explainer(test_patient, edge_index)
     
-    # 8. PREDICTION
+    # 8. UPDATED PREDICTION LOGIC
     with torch.no_grad():
         logits = model(test_patient, edge_index)
         prob_ckd = torch.softmax(logits, dim=1)[0][1].item()
-        prediction = "CKD" if prob_ckd > 0.5 else "Not CKD"
+        
+        # Binary result thresholds
+        if prob_ckd >= 0.50:
+            prediction = "High Risk — CKD"
+        else:
+            prediction = "Low Risk — Non-CKD"
 
     # 9. FEATURE IMPORTANCE & REPORT
-    importances = explanation.node_mask.squeeze()
+    importances = explanation.node_mask.squeeze().cpu().numpy()
     feat_imp = sorted(zip(feature_names, importances), key=lambda x: x[1], reverse=True)
 
     print("\nTOP BIOMARKER INFLUENCE:")
     for name, imp in feat_imp[:5]:
-        print(f"{name.upper():<10}: {imp.item():.4f}")
+        print(f"{name.upper():<10}: {imp:.4f}")
     
+    # Pass to binary reasoning engine
+    print("\nGENERATING UI REPORT...")
     print(generate_clinical_description(prediction, prob_ckd, feat_imp))
 
 if __name__ == "__main__":
