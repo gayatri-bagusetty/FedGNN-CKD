@@ -1,6 +1,7 @@
 {
     "python.analysis.extraPaths": [
-        "./data"
+        "./data",
+        "./notebooks"
     ],
     "python-envs.pythonProjects": []
 }

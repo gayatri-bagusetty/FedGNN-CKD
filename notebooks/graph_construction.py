@@ -6,6 +6,10 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.impute import SimpleImputer
 from torch_geometric.data import Data
 
+def build_single_node_graph(x_tensor):
+    edge_index = torch.tensor([[0],[0]], dtype=torch.long)
+    return x_tensor, edge_index
+
 def build_graph(X, y, k=5):
     X = np.asarray(X, dtype=np.float32)
     y = np.asarray(y, dtype=np.int64)

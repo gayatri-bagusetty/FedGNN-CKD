@@ -2,6 +2,28 @@ import pandas as pd
 import numpy as np
 import os
 from sklearn.preprocessing import StandardScaler
+import joblib
+
+def preprocess_single_patient(raw_dict, scaler_path):
+    scaler = joblib.load(scaler_path)
+    df = pd.DataFrame([raw_dict])
+    binary_map = {
+        'yes': 1, 'no': 0,
+        'good': 1, 'poor': 0,
+        'present': 1, 'notpresent': 0,
+        'normal': 1, 'abnormal': 0
+    }
+    # Lowercase only object columns
+    for col in df.columns:
+        if df[col].dtype == object:
+            df[col] = df[col].str.lower().str.strip()
+
+            # map instead of replace (NO WARNING)
+            df[col] = df[col].map(binary_map).fillna(df[col])
+
+    x_scaled = scaler.transform(df)
+    return x_scaled
+
 
 def preprocess_ckd_data():
     # 1. Load All Three Datasets
@@ -97,6 +119,8 @@ def preprocess_ckd_data():
 
     # 7. Save Processed Datasets
     os.makedirs("../data/processed/", exist_ok=True)
+    joblib.dump(scaler, "../data/processed/scaler.pkl") 
+    print(">>> Scaler object saved to ../data/processed/scaler.pkl")
     
     datasets = {
         "uci_clean.csv": (X_uci_scaled, y_uci, X_uci.columns),

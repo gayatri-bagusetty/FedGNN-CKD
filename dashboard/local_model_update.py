@@ -11,7 +11,7 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
-from notebooks.admin_pipeline_runner import run_admin_flow
+from notebooks.pipeline_runner import run_pipeline
 
 
 def show_local_model_update():
@@ -37,10 +37,7 @@ def show_local_model_update():
     # Dummy function (kept to avoid breaking structure)
     def update_status(*args, **kwargs):
         pass
-
-    # -------------------------------------------------------
-    # ------------------- CSS (UNCHANGED) -------------------
-    # -------------------------------------------------------
+    # css code
     st.markdown("""
         <style>
         .metric-box {
@@ -202,7 +199,7 @@ def show_local_model_update():
             original_cwd = os.getcwd()
             os.chdir(os.path.join(ROOT_DIR, "notebooks"))
 
-            noised_acc = run_admin_flow(df)
+            noised_acc = run_pipeline(df)
 
             st.session_state.accuracy = f"{noised_acc:.2%}"
             st.success("Global Model Updated Successfully!")
