@@ -10,9 +10,9 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ''))
 sys.path.append(BASE_DIR)
 
 from data.models.gcn_model import GCN
-from preprocessing import preprocess_single_patient
-from graph_construction import build_single_node_graph
-from inference_xai import generate_clinical_description
+from notebooks.preprocessing import preprocess_single_patient
+from notebooks.graph_construction import build_single_node_graph
+from notebooks.inference_xai import generate_clinical_description
 
 
 # ------------------------------------------------------
