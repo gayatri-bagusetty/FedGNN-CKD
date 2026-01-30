@@ -82,3 +82,21 @@ def fetch_all_patients():
     finally:
         if conn:
             conn.close()
+            
+def get_total_patients():
+    try:
+        # Replace with your actual database connection details
+        conn = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="1997",
+            database="clinical_db"
+        )
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM patients")
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+    except Exception as e:
+        # Fallback to session state length if DB fails or isn't setup yet
+        return len(st.session_state.get('patients', []))

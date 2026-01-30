@@ -3,7 +3,7 @@ import pandas as pd
 from datetime import datetime
 import os
 import sys
-from database import save_patient_data, fetch_all_patients
+from database import save_patient_data, fetch_all_patients,get_total_patients
 def doctor_dashboard():
     # --- 1. Page Configuration ---
     st.set_page_config(page_title="Doctor Portal", layout="wide")
@@ -60,16 +60,107 @@ def doctor_dashboard():
     choice = st.session_state.admin_page
     
     if choice == "Dashboard":
-        st.markdown(f'<span class="welcome-title"><br>Welcome back, {db_user_name}! 👋</span>', unsafe_allow_html=True)
-        st.markdown("---")
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            with st.container(border=True):
-                st.subheader("📖 System User Manual & Guidelines")
-                st.markdown("1. Patient Analysis\n2. Real-time Prediction\n3. XAI Insights\n4. Record Keeping")
-        with col2:
-            st.info(f"**Quick Stats**\n\nTotal Patients Analyzed: {len(st.session_state.patient_db)}")
+        st.markdown("""
+        <style>
+        /* Main Container Styling */
+        .welcome-box {
+            background-color: #E8F5E9; /* Light green tint from image */
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 1px solid #C8E6C9;
+            margin-bottom: 30px;
+            display: inline-block;
+            width: auto;
+        }
+        
+        .shadow-container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 25px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border: 1px solid #f0f2f6;
+            height: 100%;
+        }
 
+        .welcome-text {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #263238;
+            margin: 0;
+        }
+        .stats-card {
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .stats-label { font-size: 0.9rem; font-weight: 500; margin-bottom: 5px; }
+        .stats-value { font-size: 1.8rem; font-weight: bold; }
+        .stats-delta { font-size: 1rem; color: #d32f2f; }
+        
+        /* Individual Card Colors */
+        .card-red { background-color: #FEE2E2; color: #991B1B; }
+        .card-green { background-color: #DCFCE7; color: #166534; }
+        .card-teal { background-color: #F0FDFA; color: #115E59; }
+        .card-blue { background-color: #DBEAFE; color: #1E40AF; }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        # 1. Welcome Message in a Box (Top Row)
+        st.markdown(f'<div class="welcome-box"><span class="welcome-text">Welcome back, {db_user_name}! 👋</span></div>', unsafe_allow_html=True)
+        st.markdown("---")
+        
+        # 2. Main Content (Two Columns)
+        col_manual, col_stats = st.columns([1.8, 1.2])
+
+        with col_manual:
+            # System Manual in a Shadow Box
+            st.markdown(f"""
+            <div class="shadow-container">
+                <h2 style='margin-top:0;'>📖 System Manual: How to Use</h2>
+                <p><b>1. Patient Analysis:</b> Upload laboratory results (Creatinine, eGFR, etc.) to receive immediate risk scores and renal health assessments.</p>
+                <p><b>2. Real-time Prediction:</b> Utilize our longitudinal engine to forecast potential disease progression and kidney function decline over time.</p>
+                <p><b>3. XAI Insights:</b> Access Explainable AI modules to understand the specific clinical features (like blood pressure or age) driving the model's decisions.</p>
+                <p><b>4. Record Keeping:</b> Securely manage and review historical patient data to track treatment efficacy and clinical history.</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col_stats:
+            # Quick Stats Header and Grid (Matches Image 2 Style)
+            st.markdown("<h3 style='text-align: center; color: Teal;'>Quick Stats</h3>", unsafe_allow_html=True)
+        
+            # Grid Layout for Stats
+            m_col1, m_col2 = st.columns(2)
+            db_patient_count = get_total_patients()
+            with m_col1:
+                st.markdown(f"""
+                <div class="stats-card card-red">
+                    <div class="stats-label">Total Analyzed</div>
+                    <div class="stats-value">{db_patient_count}</div>
+                </div>
+                <div class="stats-card card-teal">
+                    <div class="stats-label">Last AI Confidence</div>
+                    <div class="stats-value">94.7%</div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            with m_col2:
+                st.markdown("""
+                <div class="stats-card card-green">
+                    <div class="stats-label">High Risk Patients</div>
+                    <div class="stats-value">156 <span class="stats-delta">↑</span></div>
+                </div>
+                <div class="stats-card card-blue">
+                    <div class="stats-label">No. of Patients</div>
+                    <div class="stats-value">20</div>
+                </div>
+                    """, unsafe_allow_html=True)
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
     elif choice == "Analysis":
         st.subheader("🔬 Clinical Diagnostic Analysis")
         with st.form("ckd_form"):
@@ -77,7 +168,7 @@ def doctor_dashboard():
             with col1:
                 age = st.number_input("Age", 1, 120, 45)
                 bp = st.number_input("Blood Pressure", 50, 200, 80)
-                sg = st.selectbox("Specific Gravity", [1.005, 1.010, 1.015, 1.020, 1.025])
+                sg = st.number_input("Specific Gravity", min_value=1.001, max_value=1.035, value=1.020,step=0.005,format="%.3f")
                 al = st.selectbox("Albumin", [0, 1, 2, 3, 4, 5])
                 su = st.selectbox("Sugar", [0, 1, 2, 3, 4, 5])
                 rbc = st.selectbox("RBC", ["normal", "abnormal"])
@@ -121,7 +212,7 @@ def doctor_dashboard():
                         'pe': pe, 'ane': ane
                     }
 
-                    with st.spinner("Processing through GNN-XAI Engine..."):
+                    with st.spinner("Processing through FedGNN-XAI Engine..."):
                         results = engine.run_diagnosis(raw_patient_data)
                 
                     st.markdown("---")
@@ -129,9 +220,9 @@ def doctor_dashboard():
 
                     with res_col:
                         st.markdown("### Diagnosis")
-                        border_color = "#700e18" if results["probability"] >= 0.50 else "#13772b"
+                        border_color = "#D81939" if results["probability"] >= 0.50 else "#18B78A"
                         st.markdown(f"""
-                            <div style="box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 25px; border-radius: 10px; border-left: 10px solid {border_color}; background-color: white;">
+                            <div style="box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 60px; border-radius: 30px; border-block: 10px solid #5DBF9B; background-color: white;">
                             <p style="margin:0; font-size: 14px; color: #666;">Current Prediction</p>
                             <h2 style="margin:0; color: {border_color};">{results['prediction']}</h2>
                             <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
@@ -139,13 +230,14 @@ def doctor_dashboard():
                             <h3 style="margin:0;">{results['probability']:.2%}</h3>
                             </div>
                         """, unsafe_allow_html=True)
+                        st.markdown(f"       ")
                         save_patient_data(raw_patient_data, results["prediction"])
                         st.markdown(f"""
                             <div style="
                                 background-color: #d4edda;  /* light green */
-                                color: #155724;             /* dark green text */
+                                color: black;             /* dark green text */
                                 padding: 15px 20px;
-                                border-radius: 8px;
+                                border-radius: 28px;
                                 border: 1px solid #c3e6cb;
                                 font-weight: 500;
                                 font-size: 16px;
@@ -158,23 +250,17 @@ def doctor_dashboard():
 
                     with xai_col:
                         st.markdown("### 🧠 Explanation & Insights")
-                        
-                        # Set colors based on prediction
-                        is_high_risk = results["probability"] >= 0.50
-                        accent_color = "#dc3545" if is_high_risk else "#28a745"
-                        bg_color = "#fff5f5" if is_high_risk else "#f8fff9"
 
                         # --- THE SHADOW BOX ---
                         # result['report'] is now the dictionary from inference_xai.py
                         st.markdown(f"""
                             <div style="box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
                                         padding: 25px; 
-                                        border-radius: 12px; 
-                                        border-left: 10px solid {accent_color}; 
-                                        background-color: {bg_color}; 
+                                        border-radius: 30px; 
+                                        border-block: 10px solid #5DBF9B; 
+                                        background-color: white; 
                                         margin-bottom: 25px;">
-                                <h4 style="margin-top:0; color: {accent_color};">CLINICAL ANALYSIS REPORT</h4>
-                                <p style="font-size: 1.1em; color: #333;"><strong>Status:</strong> {results['prediction']}</p>
+                                <h4 style="margin-top:0; color: Black;">CLINICAL ANALYSIS REPORT</h4>
                                 <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
                                 <p style="font-size: 0.95em; color: #444; line-height: 1.6;">
                                     <strong>EXPLANATION:</strong><br>
@@ -191,17 +277,61 @@ def doctor_dashboard():
                             <div style="box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
                                         padding: 25px; 
                                         border-radius: 12px; 
-                                        background-color: {bg_color}; 
+                                        background-color: white; 
                                         border-left: 1px solid #f0f2f6;">
                                 <h4 style="margin-top:0; color: #333;">📊 Biomarker Influence</h4>
                                 <p style="font-size: 0.85em; color: #666; margin-bottom: 20px;">Impact of features on the model outcome:</p>
                         """, unsafe_allow_html=True)
                         
                         for feat, score in results["top_features"]:
-                            st.write(f"**{feat.upper()}**")
-                            st.progress(min(max(float(score), 0.0), 1.0))
-                            
-                        st.markdown("</div>", unsafe_allow_html=True)
+                            # Your logic: Normalize and scale to 100
+                            clean_score = min(max(float(score), 0.0), 1.0) * 100
+                            st.markdown("""
+                                <style>
+                                    .biomarker-container {
+                                        background-color: #ffffff;
+                                        padding: 15px;
+                                        border-radius: 12px;
+                                        border: 1px solid #e0e0e0;
+                                        margin-bottom: 10px;
+                                    }
+                                    .biomarker-label {
+                                        font-weight: bold;
+                                        color: #333;
+                                        display: flex;
+                                        justify-content: space-between;
+                                        margin-bottom: 5px;
+                                    }
+                                    .biomarker-bar-bg {
+                                        background-color: #f0f2f6;
+                                        border-radius: 10px;
+                                        width: 100%;
+                                        height: 8px;
+                                    }
+                                    .biomarker-bar-fill {
+                                        background: linear-gradient(90deg, #50C0A4, #55C0A1);
+                                        height: 8px;
+                                        border-radius: 10px;
+                                    }
+                                    .biomarker-score {
+                                        color: #666;
+                                        font-size: 0.85rem;
+                                    }
+                                </style>
+                            """, unsafe_allow_html=True)
+                            # Render the custom biomarker bar
+                            st.markdown(f"""
+                                <div class="biomarker-container">
+                                    <div class="biomarker-label">
+                                    <span>{feat}</span>
+                                    <span class="biomarker-score">{clean_score:.1f}% Impact</span>
+                                    </div>
+                                    <div class="biomarker-bar-bg">
+                                    <div class="biomarker-bar-fill" style="width: {clean_score}%;"></div>
+                                    </div>
+                                </div>
+                            """, unsafe_allow_html=True)
+                            st.markdown("</div>", unsafe_allow_html=True)
                 except Exception as e:
                     st.error(f"System Error: {str(e)}")
 

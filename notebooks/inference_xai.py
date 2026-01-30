@@ -31,24 +31,33 @@ class WrappedModel(torch.nn.Module):
 # 3. CLINICAL EXPLANATION GENERATOR
 # --------------------------------------------------
 def generate_clinical_description(prediction, prob, feat_imp):
+    # 1. Filter out 'AGE' from drivers to keep focus on physiological markers
+    filtered_features = [f for f in feat_imp if f[0].upper() != "AGE"]
+    
+    # Get top 3 physiological drivers
+    top_3_names = [f[0].upper() for f in filtered_features[:3]]
+    primary_factor = top_3_names[0] if top_3_names else "RENAL BIOMARKERS"
 
-    top_3 = [f[0].upper() for f in feat_imp[:3]]
-
+    # 2. Build bulleted explanation based on key features
     if prediction == "CKD":
         reasoning = (
-            "The graph neural network detected abnormal interactions among key renal "
-            "biomarkers. The patient embedding is closely aligned with Chronic Kidney "
-            "Disease patterns observed during federated training."
+            f"The Graph Neural Network (GNN) identifies a high risk of CKD based on the following findings:\n\n"
+            f"* **{primary_factor} Correlation:** Significant deviation from normal physiological baseline detected.\n"
+            f"* **Abnormal Connectivity:** Disrupted interactions between {', '.join(top_3_names[1:])} and other key nodes.\n"
+            f"* **Pattern Matching:** Patient embedding aligns with renal impairment clusters identified in federated training."
         )
+
     else:
         reasoning = (
-            "The patient biomarker profile exhibits stable physiological behavior. "
-            "The learned graph representation aligns with non-CKD clinical clusters."
+            f"The patient demonstrates a stable renal profile with no significant disease markers:\n\n"
+            f"* **{primary_factor} Stability:** Feature levels are within healthy clinical bounds.\n"
+            f"* **Balanced Graph:** Learned representations for {', '.join(top_3_names[1:])} show homeostatic behavior.\n"
+            f"* **Cluster Alignment:** Data matches healthy clinical cohorts with high confidence."
         )
 
     return {
         "explanation": reasoning,
-        "primary_drivers": ", ".join(top_3)
+        "primary_drivers": ", ".join(top_3_names),
     }
 
 
