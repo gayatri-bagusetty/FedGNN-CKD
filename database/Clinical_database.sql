@@ -60,3 +60,6 @@ CREATE TABLE IF NOT EXISTS patients (
     pe VARCHAR(10),
     ane VARCHAR(10)
 );
+
+Select * from patients;
+TRUNCATE TABLE patients;

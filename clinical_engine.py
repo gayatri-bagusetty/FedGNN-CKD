@@ -61,7 +61,7 @@ class ClinicalInferenceEngine:
 
         self.explainer = Explainer(
             model=self.wrapped_model,
-            algorithm=GNNExplainer(epochs=200),
+            algorithm=GNNExplainer(epochs=50),
             explanation_type="model",
             node_mask_type="attributes",
             model_config=dict(

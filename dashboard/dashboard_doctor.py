@@ -4,164 +4,18 @@ from datetime import datetime
 import os
 import sys
 from database import save_patient_data, fetch_all_patients,get_total_patients
-def doctor_dashboard():
-    # --- 1. Page Configuration ---
-    st.set_page_config(page_title="Doctor Portal", layout="wide")
+from clinical_engine import ClinicalInferenceEngine
 
-    db_user_name = st.session_state.get('full_name', 'Doctor')
+@st.cache_resource
+def get_inference_engine():
+    # This only runs ONCE. Subsequent calls return the same object instantly.
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    model_path = os.path.join(root, "data", "models", "global_model.pth")
+    scaler_path = os.path.join(root, "data", "processed", "scaler.pkl")
+    return ClinicalInferenceEngine(model_path, scaler_path)
 
-    # --- 2. CSS ---
-    st.markdown("""
-        <style>
-        header { height: 3.5rem !important; background-color: transparent !important; }
-        [data-testid="stDecoration"] { display: none; }
-        [data-testid="stMainBlockContainer"] {
-            padding-top: 1rem !important; 
-            margin-top: -30px !important; 
-            padding-bottom: 2rem !important;
-        }
-        .welcome-title {
-            font-size: 38px !important;
-            font-weight: bold !important;
-            margin-bottom: 5px !important;
-            color: #1f2937;
-            display: block;
-        }
-        [data-testid="stSidebar"] { background-color: #f0f2f6; }
-        section[data-testid="stSidebar"] > div { overflow: hidden !important; }
-        .stButton > button {
-            width: 100% !important;
-            border-radius: 8px !important;
-            border: 1px solid #d1d5db !important;
-            padding: 10px !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-    # --- 3. Data Initialization ---
-    record_cols = ["Sl.No", "Time of Entry", "Patient Name", "Age", "BP", "Creatinine", "Hemoglobin", "Result"]
-    if 'patient_db' not in st.session_state:
-        st.session_state.patient_db = pd.DataFrame(columns=record_cols)
-    if 'admin_page' not in st.session_state:
-        st.session_state.admin_page = "Dashboard"
-
-    # --- 4. Sidebar ---
-    with st.sidebar:
-        st.title("🩺 NephroCare AI")
-        st.write(f"Logged in as: **{db_user_name}**")
-        st.markdown("---")
-        if st.button("📊 Dashboard"): st.session_state.admin_page = "Dashboard"
-        if st.button("🗂️ Patient Longitudinal Records"): st.session_state.admin_page = "Records" 
-        if st.button("🔬 Patient Analysis"): st.session_state.admin_page = "Analysis"
-        if st.button("🚪 Logout"):
-            st.session_state.clear()
-            st.rerun()
-
-    choice = st.session_state.admin_page
-    
-    if choice == "Dashboard":
-        st.markdown("""
-        <style>
-        /* Main Container Styling */
-        .welcome-box {
-            background-color: #E8F5E9; /* Light green tint from image */
-            padding: 20px;
-            border-radius: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-            border: 1px solid #C8E6C9;
-            margin-bottom: 30px;
-            display: inline-block;
-            width: auto;
-        }
-        
-        .shadow-container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 25px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            border: 1px solid #f0f2f6;
-            height: 100%;
-        }
-
-        .welcome-text {
-            font-size: 2rem;
-            font-weight: bold;
-            color: #263238;
-            margin: 0;
-        }
-        .stats-card {
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            margin-bottom: 15px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        }
-        .stats-label { font-size: 0.9rem; font-weight: 500; margin-bottom: 5px; }
-        .stats-value { font-size: 1.8rem; font-weight: bold; }
-        .stats-delta { font-size: 1rem; color: #d32f2f; }
-        
-        /* Individual Card Colors */
-        .card-red { background-color: #FEE2E2; color: #991B1B; }
-        .card-green { background-color: #DCFCE7; color: #166534; }
-        .card-teal { background-color: #F0FDFA; color: #115E59; }
-        .card-blue { background-color: #DBEAFE; color: #1E40AF; }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        # 1. Welcome Message in a Box (Top Row)
-        st.markdown(f'<div class="welcome-box"><span class="welcome-text">Welcome back, {db_user_name}! 👋</span></div>', unsafe_allow_html=True)
-        st.markdown("---")
-        
-        # 2. Main Content (Two Columns)
-        col_manual, col_stats = st.columns([1.8, 1.2])
-
-        with col_manual:
-            # System Manual in a Shadow Box
-            st.markdown(f"""
-            <div class="shadow-container">
-                <h2 style='margin-top:0;'>📖 System Manual: How to Use</h2>
-                <p><b>1. Patient Analysis:</b> Upload laboratory results (Creatinine, eGFR, etc.) to receive immediate risk scores and renal health assessments.</p>
-                <p><b>2. Real-time Prediction:</b> Utilize our longitudinal engine to forecast potential disease progression and kidney function decline over time.</p>
-                <p><b>3. XAI Insights:</b> Access Explainable AI modules to understand the specific clinical features (like blood pressure or age) driving the model's decisions.</p>
-                <p><b>4. Record Keeping:</b> Securely manage and review historical patient data to track treatment efficacy and clinical history.</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col_stats:
-            # Quick Stats Header and Grid (Matches Image 2 Style)
-            st.markdown("<h3 style='text-align: center; color: Teal;'>Quick Stats</h3>", unsafe_allow_html=True)
-        
-            # Grid Layout for Stats
-            m_col1, m_col2 = st.columns(2)
-            db_patient_count = get_total_patients()
-            with m_col1:
-                st.markdown(f"""
-                <div class="stats-card card-red">
-                    <div class="stats-label">Total Analyzed</div>
-                    <div class="stats-value">{db_patient_count}</div>
-                </div>
-                <div class="stats-card card-teal">
-                    <div class="stats-label">Last AI Confidence</div>
-                    <div class="stats-value">94.7%</div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            with m_col2:
-                st.markdown("""
-                <div class="stats-card card-green">
-                    <div class="stats-label">High Risk Patients</div>
-                    <div class="stats-value">156 <span class="stats-delta">↑</span></div>
-                </div>
-                <div class="stats-card card-blue">
-                    <div class="stats-label">No. of Patients</div>
-                    <div class="stats-value">20</div>
-                </div>
-                    """, unsafe_allow_html=True)
-
-        st.markdown("<br><br>", unsafe_allow_html=True)
-    elif choice == "Analysis":
+@st.fragment
+def analysis_tool(engine):
         st.subheader("🔬 Clinical Diagnostic Analysis")
         with st.form("ckd_form"):
             col1, col2, col3, col4 = st.columns(4)
@@ -334,7 +188,166 @@ def doctor_dashboard():
                             st.markdown("</div>", unsafe_allow_html=True)
                 except Exception as e:
                     st.error(f"System Error: {str(e)}")
+def doctor_dashboard():
+    engine = get_inference_engine()
+    # --- 1. Page Configuration ---
+    st.set_page_config(page_title="Doctor Portal", layout="wide")
 
+    db_user_name = st.session_state.get('full_name', 'Doctor')
+
+    # --- 2. CSS ---
+    st.markdown("""
+        <style>
+        header { height: 3.5rem !important; background-color: transparent !important; }
+        [data-testid="stDecoration"] { display: none; }
+        [data-testid="stMainBlockContainer"] {
+            padding-top: 1rem !important; 
+            margin-top: -30px !important; 
+            padding-bottom: 2rem !important;
+        }
+        .welcome-title {
+            font-size: 38px !important;
+            font-weight: bold !important;
+            margin-bottom: 5px !important;
+            color: #1f2937;
+            display: block;
+        }
+        [data-testid="stSidebar"] { background-color: #f0f2f6; }
+        section[data-testid="stSidebar"] > div { overflow: hidden !important; }
+        .stButton > button {
+            width: 100% !important;
+            border-radius: 8px !important;
+            border: 1px solid #d1d5db !important;
+            padding: 10px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+    # --- 3. Data Initialization ---
+    record_cols = ["Sl.No", "Time of Entry", "Patient Name", "Age", "BP", "Creatinine", "Hemoglobin", "Result"]
+    if 'patient_db' not in st.session_state:
+        st.session_state.patient_db = pd.DataFrame(columns=record_cols)
+    if 'admin_page' not in st.session_state:
+        st.session_state.admin_page = "Dashboard"
+
+    # --- 4. Sidebar ---
+    with st.sidebar:
+        st.title("🩺 NephroCare AI")
+        st.write(f"Logged in as: **{db_user_name}**")
+        st.markdown("---")
+        if st.button("📊 Dashboard"): st.session_state.admin_page = "Dashboard"
+        if st.button("🗂️ Patient Longitudinal Records"): st.session_state.admin_page = "Records" 
+        if st.button("🔬 Patient Analysis"): st.session_state.admin_page = "Analysis"
+        if st.button("🚪 Logout"):
+            st.session_state.clear()
+            st.rerun()
+
+    choice = st.session_state.admin_page
+    
+    if choice == "Dashboard":
+        st.markdown("""
+        <style>
+        /* Main Container Styling */
+        .welcome-box {
+            background-color: #E8F5E9; /* Light green tint from image */
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border: 1px solid #C8E6C9;
+            margin-bottom: 30px;
+            display: inline-block;
+            width: auto;
+        }
+        
+        .shadow-container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 25px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border: 1px solid #f0f2f6;
+            height: 100%;
+        }
+
+        .welcome-text {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #263238;
+            margin: 0;
+        }
+        .stats-card {
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .stats-label { font-size: 0.9rem; font-weight: 500; margin-bottom: 5px; }
+        .stats-value { font-size: 1.8rem; font-weight: bold; }
+        .stats-delta { font-size: 1rem; color: #d32f2f; }
+        
+        /* Individual Card Colors */
+        .card-red { background-color: #FEE2E2; color: #991B1B; }
+        .card-green { background-color: #DCFCE7; color: #166534; }
+        .card-teal { background-color: #F0FDFA; color: #115E59; }
+        .card-blue { background-color: #DBEAFE; color: #1E40AF; }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        # 1. Welcome Message in a Box (Top Row)
+        st.markdown(f'<div class="welcome-box"><span class="welcome-text">Welcome back, {db_user_name}! 👋</span></div>', unsafe_allow_html=True)
+        st.markdown("---")
+        
+        # 2. Main Content (Two Columns)
+        col_manual, col_stats = st.columns([1.8, 1.2])
+
+        with col_manual:
+            # System Manual in a Shadow Box
+            st.markdown(f"""
+            <div class="shadow-container">
+                <h2 style='margin-top:0;'>📖 System Manual: How to Use</h2>
+                <p><b>1. Patient Analysis:</b> Upload laboratory results (Creatinine, eGFR, etc.) to receive immediate risk scores and renal health assessments.</p>
+                <p><b>2. Real-time Prediction:</b> Utilize our longitudinal engine to forecast potential disease progression and kidney function decline over time.</p>
+                <p><b>3. XAI Insights:</b> Access Explainable AI modules to understand the specific clinical features (like blood pressure or age) driving the model's decisions.</p>
+                <p><b>4. Record Keeping:</b> Securely manage and review historical patient data to track treatment efficacy and clinical history.</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col_stats:
+            # Quick Stats Header and Grid (Matches Image 2 Style)
+            st.markdown("<h3 style='text-align: center; color: Teal;'>Quick Stats</h3>", unsafe_allow_html=True)
+        
+            # Grid Layout for Stats
+            m_col1, m_col2 = st.columns(2)
+            db_patient_count = get_total_patients()
+            with m_col1:
+                st.markdown(f"""
+                <div class="stats-card card-red">
+                    <div class="stats-label">Total Analyzed</div>
+                    <div class="stats-value">{db_patient_count}</div>
+                </div>
+                <div class="stats-card card-teal">
+                    <div class="stats-label">Last AI Confidence</div>
+                    <div class="stats-value">94.7%</div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            with m_col2:
+                st.markdown("""
+                <div class="stats-card card-green">
+                    <div class="stats-label">High Risk Patients</div>
+                    <div class="stats-value">156 <span class="stats-delta">↑</span></div>
+                </div>
+                <div class="stats-card card-blue">
+                    <div class="stats-label">No. of Patients</div>
+                    <div class="stats-value">20</div>
+                </div>
+                    """, unsafe_allow_html=True)
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+    elif choice == "Analysis":
+        analysis_tool(engine)
     elif choice == "Records":
         st.subheader("🗂️ Patient Longitudinal Records")
 
