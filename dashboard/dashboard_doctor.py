@@ -4,6 +4,8 @@ from datetime import datetime
 import os
 import sys
 from database import save_patient_data, fetch_all_patients,get_total_patients
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from clinical_engine import ClinicalInferenceEngine
 
 @st.cache_resource
@@ -103,7 +105,7 @@ def analysis_tool(engine):
 
 
                     with xai_col:
-                        st.markdown("### 🧠 Explanation & Insights")
+                        st.markdown("### EXPLANATION")
 
                         # --- THE SHADOW BOX ---
                         # result['report'] is now the dictionary from inference_xai.py
@@ -125,67 +127,7 @@ def analysis_tool(engine):
                                 </p>
                             </div>
                         """, unsafe_allow_html=True)
-
-                        # --- BIOMARKER INFLUENCE BOX ---
-                        st.markdown(f"""
-                            <div style="box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
-                                        padding: 25px; 
-                                        border-radius: 12px; 
-                                        background-color: white; 
-                                        border-left: 1px solid #f0f2f6;">
-                                <h4 style="margin-top:0; color: #333;">📊 Biomarker Influence</h4>
-                                <p style="font-size: 0.85em; color: #666; margin-bottom: 20px;">Impact of features on the model outcome:</p>
-                        """, unsafe_allow_html=True)
-                        
-                        for feat, score in results["top_features"]:
-                            # Your logic: Normalize and scale to 100
-                            clean_score = min(max(float(score), 0.0), 1.0) * 100
-                            st.markdown("""
-                                <style>
-                                    .biomarker-container {
-                                        background-color: #ffffff;
-                                        padding: 15px;
-                                        border-radius: 12px;
-                                        border: 1px solid #e0e0e0;
-                                        margin-bottom: 10px;
-                                    }
-                                    .biomarker-label {
-                                        font-weight: bold;
-                                        color: #333;
-                                        display: flex;
-                                        justify-content: space-between;
-                                        margin-bottom: 5px;
-                                    }
-                                    .biomarker-bar-bg {
-                                        background-color: #f0f2f6;
-                                        border-radius: 10px;
-                                        width: 100%;
-                                        height: 8px;
-                                    }
-                                    .biomarker-bar-fill {
-                                        background: linear-gradient(90deg, #50C0A4, #55C0A1);
-                                        height: 8px;
-                                        border-radius: 10px;
-                                    }
-                                    .biomarker-score {
-                                        color: #666;
-                                        font-size: 0.85rem;
-                                    }
-                                </style>
-                            """, unsafe_allow_html=True)
-                            # Render the custom biomarker bar
-                            st.markdown(f"""
-                                <div class="biomarker-container">
-                                    <div class="biomarker-label">
-                                    <span>{feat}</span>
-                                    <span class="biomarker-score">{clean_score:.1f}% Impact</span>
-                                    </div>
-                                    <div class="biomarker-bar-bg">
-                                    <div class="biomarker-bar-fill" style="width: {clean_score}%;"></div>
-                                    </div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                            st.markdown("</div>", unsafe_allow_html=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
                 except Exception as e:
                     st.error(f"System Error: {str(e)}")
 def doctor_dashboard():
