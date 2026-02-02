@@ -82,7 +82,7 @@ def run_inference_xai():
     )
 
     if not os.path.exists(model_path):
-        print("❌ global_model.pth not found.")
+        print("global_model.pth not found.")
         return
 
     model.load_state_dict(
@@ -122,7 +122,7 @@ def run_inference_xai():
         )
     )
 
-    print("🧠 Running GNNExplainer...")
+    print("Running GNNExplainer...")
 
     explanation = explainer(test_patient, edge_index)
 
