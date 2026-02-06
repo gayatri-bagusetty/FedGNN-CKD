@@ -5,6 +5,9 @@ import os
 from sklearn.neighbors import NearestNeighbors
 from sklearn.impute import SimpleImputer
 from torch_geometric.data import Data
+import matplotlib.pyplot as plt
+import networkx as nx
+from torch_geometric.utils import to_networkx
 
 def build_single_node_graph(x_tensor):
     edge_index = torch.tensor([[0],[0]], dtype=torch.long)
@@ -40,6 +43,34 @@ def build_graph(X, y, k=5):
     )
     return graph
 
+def visualize_graph(graph, title, save_path, max_nodes=100, show=False):
+    """
+    Visualize PyG graph using NetworkX and save image
+    """
+    g_nx = to_networkx(graph, to_undirected=True)
+
+    if g_nx.number_of_nodes() > max_nodes:
+        g_nx = g_nx.subgraph(list(g_nx.nodes)[:max_nodes])
+
+    plt.figure(figsize=(8, 6))
+    pos = nx.spring_layout(g_nx, seed=42)
+    nx.draw(
+        g_nx,
+        pos,
+        node_size=50,
+        node_color="skyblue",
+        edge_color="gray",
+        with_labels=False
+    )
+    plt.title(title)
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    
+    # if show:
+    #     plt.show()
+    # else:
+    #     plt.close()
+
+
 def main():
     # Paths according to hospital_simulation.py output
     input_base_path = "../data/processed"
@@ -73,6 +104,15 @@ def main():
         torch.save(graph, save_path)
         
         print(f"Successfully saved graph_{h_id}.pt | Nodes: {graph.num_nodes} | Features: {graph.num_node_features}")
+        img_path = os.path.join(output_path, f"graph_{h_id}.png")
+        visualize_graph(
+            graph,
+            title=f"Hospital {h_id} Graph",
+            save_path=img_path,
+            show=True
+        )
+        print(f"Graph images are saved")
+
 
 if __name__ == "__main__":
     main()
