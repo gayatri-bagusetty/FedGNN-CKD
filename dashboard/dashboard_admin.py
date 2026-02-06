@@ -119,8 +119,8 @@ def admin_dashboard():
                 st.markdown(f'<div class="stats-card card-red"><div class="stats-label">Total Records</div><div class="stats-value">{db_user_count}</div></div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stats-card card-teal"><div class="stats-label">Next Update</div><div class="stats-value" style="font-size: 28px;">{next_update.strftime('%b %d, %Y')  }</div></div>', unsafe_allow_html=True)
             with m_col2:
-                st.markdown('<div class="stats-card card-green"><div class="stats-label">Model Version</div><div class="stats-value">v4.2.1</div></div>', unsafe_allow_html=True)
-                st.markdown('<div class="stats-card card-blue"><div class="stats-label">Active Nodes</div><div class="stats-value">12</div></div>', unsafe_allow_html=True)
+                st.markdown('<div class="stats-card card-green"><div class="stats-label">Federated Round</div><div class="stats-value">v4.2.1</div></div>', unsafe_allow_html=True)
+                st.markdown('<div class="stats-card card-blue"><div class="stats-label">Participating Hospitals</div><div class="stats-value">12</div></div>', unsafe_allow_html=True)
 
     elif choice == "Local Model Update":
         show_local_model_update()
