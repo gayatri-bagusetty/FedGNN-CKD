@@ -2,7 +2,6 @@ import streamlit as st
 import time
 import sys
 import os
-import pandas as pd
 import json
 
 # -------------------------------------------------------
@@ -12,7 +11,7 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
-from notebooks.pipeline_runner import run_pipeline
+from notebooks.incremental_update_pipeline import run_incremental_update
 
 # -------------------------------------------------------
 # Persistent Metrics Storage
@@ -57,9 +56,6 @@ def show_local_model_update():
     if "last_update_time" not in st.session_state:
         st.session_state.last_update_time = stored_metrics["last_update_time"]
 
-    if "progress" not in st.session_state:
-        st.session_state.progress = 0
-
     # -------------------------------------------------------
     # CSS
     # -------------------------------------------------------
@@ -73,22 +69,6 @@ def show_local_model_update():
             text-align: center;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
-        .step-wrapper {
-            display: flex;
-            justify-content: space-between;
-            margin: 25px 0;
-            gap: 8px;
-        }
-        .arrow-step {
-            flex: 1;
-            background: #2563eb;
-            color: white;
-            padding: 12px 5px;
-            text-align: center;
-            font-weight: bold;
-            clip-path: polygon(90% 0%, 100% 50%, 90% 100%, 0% 100%, 10% 50%, 0% 0%);
-        }
-        .step-title { font-size: 11px; display: block; }
         </style>
     """, unsafe_allow_html=True)
 
@@ -135,23 +115,20 @@ def show_local_model_update():
         )
 
     # -------------------------------------------------------
-    # Live Status (Complete Section)
+    # Live Status
     # -------------------------------------------------------
     st.subheader("📊 Live Status")
 
-    with st.container(border=True):
-        if uploaded_file:
-            st.write("**Current Phase:** Federated Local Training → Secure Upload")
-            st.progress(st.session_state.progress)
-            st.code(
-                ">>> Loading hospital data\n"
-                ">>> Running federated local update\n"
-                ">>> Applying privacy constraints\n"
-                ">>> Sending update to global server",
-                language="python"
-            )
-        else:
-            st.info("Upload a CSV file to begin federated training")
+    left_col, right_col = st.columns([3, 1])
+
+    with left_col:
+        log_box = st.empty()
+
+    with right_col:
+        progress_circle = st.empty()
+
+    if not uploaded_file:
+        st.info("Upload a CSV file to begin federated training")
 
     # -------------------------------------------------------
     # Execution
@@ -159,11 +136,10 @@ def show_local_model_update():
     if st.button(" Run Training Round", type="primary", disabled=uploaded_file is None):
 
         start_time = time.time()
-        st.session_state.progress = 20
 
         with st.spinner("Running Federated Training Pipeline..."):
 
-            # Save uploaded CSV to pipeline data location
+            # Save uploaded CSV
             data_dir = os.path.join(ROOT_DIR, "data")
             os.makedirs(data_dir, exist_ok=True)
 
@@ -171,24 +147,44 @@ def show_local_model_update():
             with open(csv_path, "wb") as f:
                 f.write(uploaded_file.getbuffer())
 
-            st.session_state.progress = 50
+            # Call pipeline
+            acc, logs = run_incremental_update(csv_path)
 
-            original_cwd = os.getcwd()
-            os.chdir(os.path.join(ROOT_DIR, "notebooks"))
+            # Live logs + circular progress
+            log_text = ""
+            total_steps = len(logs)
 
-            try:
-                # Pipeline reads CSV internally
-                accuracy = run_pipeline()
-            finally:
-                os.chdir(original_cwd)
+            for i, line in enumerate(logs):
+                log_text += "✔ " + line + "\n"
+                log_box.code(log_text)
 
-            st.session_state.progress = 90
+                percent = int(((i + 1) / total_steps) * 100)
+
+                progress_circle.markdown(f"""
+                <div style="display:flex;justify-content:center;align-items:center;">
+                  <div style="
+                    width:120px;
+                    height:120px;
+                    border-radius:50%;
+                    background:conic-gradient(#4CAF50 {percent*3.6}deg, #e5e7eb 0deg);
+                    display:flex;
+                    justify-content:center;
+                    align-items:center;
+                    font-size:20px;
+                    font-weight:bold;">
+                    {percent}%
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                time.sleep(0.4)
+
             end_time = time.time()
 
             # -------------------------------------------------------
-            # Real metrics + persistence
+            # Metrics + persistence
             # -------------------------------------------------------
-            accuracy_str = f"{accuracy:.2%}"
+            accuracy_str = f"{acc:.2%}"
             analysis_time_str = f"{end_time - start_time:.2f} sec"
             last_update_str = time.strftime("%H:%M:%S")
 
@@ -202,6 +198,5 @@ def show_local_model_update():
                 last_update_time=last_update_str
             )
 
-            st.session_state.progress = 100
             st.success("✅ Global Model Updated Successfully")
             st.rerun()

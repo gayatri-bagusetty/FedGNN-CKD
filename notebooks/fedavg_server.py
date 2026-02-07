@@ -11,6 +11,47 @@ from data.models.gcn_model import GCN
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"FedAvg Server active on: {device}")
 
+import torch
+import os
+from data.models.gcn_model import GCN
+
+def update_fedavg(local_model_path, global_model_path):
+    """
+    Aggregate local model into global model using FedAvg
+    """
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # ⚠️ MUST MATCH train_local_model architecture
+    input_dim = 24
+    hidden_dim = 32   # 🔥 MATCH your training model
+    output_dim = 2
+
+    # Load local model
+    local_model = GCN(input_dim, hidden_dim, output_dim).to(device)
+    local_model.load_state_dict(torch.load(local_model_path, map_location=device))
+
+    # Load or init global model
+    global_model = GCN(input_dim, hidden_dim, output_dim).to(device)
+
+    if os.path.exists(global_model_path):
+        global_model.load_state_dict(torch.load(global_model_path, map_location=device))
+
+    # -------- FedAvg (simple averaging) --------
+    global_state = global_model.state_dict()
+    local_state = local_model.state_dict()
+
+    for key in global_state:
+        global_state[key] = (global_state[key] + local_state[key]) / 2
+
+    global_model.load_state_dict(global_state)
+
+    # Save updated global model
+    torch.save(global_model.state_dict(), global_model_path)
+
+    print("✅ FedAvg aggregation completed")
+
+
 def fedavg(ldp_models):
     """
     Performs Federated Averaging (FedAvg) on LDP-protected weights.

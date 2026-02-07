@@ -12,7 +12,6 @@ def preprocess_single_patient(raw_dict, scaler_path="../data/processed/scaler.pk
     scaler = joblib.load(scaler_path)
     feature_order = joblib.load("../data/processed/feature_order.pkl")
 
-    # Create DataFrame
     df = pd.DataFrame([raw_dict])
 
     # Ensure all expected features exist
@@ -20,34 +19,108 @@ def preprocess_single_patient(raw_dict, scaler_path="../data/processed/scaler.pk
         if col not in df.columns:
             df[col] = np.nan
 
-    # Enforce correct order
     df = df[feature_order]
 
     binary_map = {
         'yes': 1, 'no': 0,
+        'ckd': 1, 'notckd': 0,
         'good': 1, 'poor': 0,
         'present': 1, 'notpresent': 0,
-        'normal': 1, 'abnormal': 0
+        'normal': 1, 'abnormal': 0,
+        '\tno': 0, '\tyes': 1, ' yes': 1, ' \tno': 0
     }
 
-    # Clean categorical columns
+    # Encode categorical
     for col in df.columns:
         if df[col].dtype == object:
             df[col] = (
-                df[col]
-                .astype(str)
-                .str.lower()
+                df[col].astype(str)
                 .str.strip()
+                .str.lower()
                 .map(binary_map)
-                .fillna(0)
+                .fillna(df[col])
             )
 
-    # Force numeric
-    df = df.astype(float)
+    # Convert to numeric
+    df = df.apply(pd.to_numeric, errors="coerce")
+
+    # Fill missing values with median
+    df = df.fillna(df.median())
+
+    # Final fallback
+    df = df.fillna(0)
 
     # Scale
     x_scaled = scaler.transform(df)
     return x_scaled
+
+
+# --------------------------------------------------
+# SINGLE DATASET PREPROCESSING (FOR INCREMENTAL FL)
+# --------------------------------------------------
+def preprocess_uploaded_dataset(
+    csv_path="../data/uploaded_local_data.csv",
+    scaler_path="../data/processed/scaler.pkl"
+):
+    import pandas as pd
+    import numpy as np
+    import joblib
+
+    scaler = joblib.load(scaler_path)
+    feature_order = joblib.load("../data/processed/feature_order.pkl")
+
+    df = pd.read_csv(csv_path)
+
+    # Standardize column names
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.lower()
+        .str.replace(" ", "_")
+    )
+
+    TARGET = "classification"
+
+    # Ensure all required columns exist
+    for col in feature_order + [TARGET]:
+        if col not in df.columns:
+            df[col] = np.nan
+
+    df = df[feature_order + [TARGET]]
+
+    # 🔥 Convert EVERYTHING to lowercase strings first
+    df = df.applymap(lambda x: str(x).strip().lower())
+
+    # Mapping exactly for your dataset
+    map_dict = {
+        "yes": 1, "no": 0,
+        "ckd": 1, "notckd": 0,
+        "normal": 1, "abnormal": 0,
+        "present": 1, "notpresent": 0,
+        "?": np.nan, "nan": np.nan, "none": np.nan
+    }
+
+    df.replace(map_dict, inplace=True)
+
+    # Force numeric
+    df = df.apply(pd.to_numeric, errors="coerce")
+
+    # Fill missing values
+    df = df.fillna(df.median())
+    df = df.fillna(0)
+
+    X = df[feature_order]
+    y = df[TARGET].astype(int)
+
+    # Scale features
+    X_scaled = scaler.transform(X)
+
+    # Ensure numpy arrays
+    X_scaled = np.asarray(X_scaled, dtype=np.float32)
+    y = np.asarray(y, dtype=np.int64)
+
+    return X_scaled, y
+
 
 
 # --------------------------------------------------
@@ -133,10 +206,9 @@ def preprocess_ckd_data():
         # Numeric handling
         for col in num_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-            median_val = df[col].median()
-            df[col].fillna(median_val if not pd.isna(median_val) else 0, inplace=True)
+            df[col].fillna(df[col].median(), inplace=True)
 
-        # Target cleanup
+        # Target
         df[TARGET] = (
             df[TARGET]
             .astype(str)
@@ -147,7 +219,7 @@ def preprocess_ckd_data():
             .astype(int)
         )
 
-        # Categorical encoding
+        # Categorical
         for col in cat_cols:
             df[col] = (
                 df[col]
@@ -160,7 +232,7 @@ def preprocess_ckd_data():
             )
 
     # --------------------------------------------------
-    # NORMALIZATION (FEDERATED-CORRECT)
+    # NORMALIZATION
     # --------------------------------------------------
     print("\n--- Normalizing Features ---")
 
@@ -188,7 +260,6 @@ def preprocess_ckd_data():
 
     print(">>> Scaler & feature order saved")
 
-    # Class distribution (useful for loss weighting)
     print("UCI class distribution:", Counter(y_uci))
 
     # --------------------------------------------------
@@ -205,6 +276,7 @@ def preprocess_ckd_data():
 
     print("\n--- Preprocessing Completed Successfully ---")
     print("Files saved to ../data/processed/")
+
 
 # --------------------------------------------------
 if __name__ == "__main__":
