@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime,timedelta
+import streamlit as st
+from system_state import load_state
 
 # --- IMPORT FROM YOUR FIXED DATABASE FILE ---
 from database import get_total_users, get_db_connection
@@ -109,6 +111,11 @@ def admin_dashboard():
         with col_stats:
             st.markdown("<h3 style='text-align: center; color: Teal;'>Quick Network Stats</h3>", unsafe_allow_html=True)
             db_user_count = get_total_users()
+            # Load federated system state
+            state = load_state()
+            fed_round = state.get("federated_round", 0)
+            hospitals = state.get("participating_hospitals", [])
+
             
             # Logic for 6-month date calculation
             last_update = datetime(2025, 1, 15) # Example: date of last update
@@ -119,8 +126,8 @@ def admin_dashboard():
                 st.markdown(f'<div class="stats-card card-red"><div class="stats-label">Total Records</div><div class="stats-value">{db_user_count}</div></div>', unsafe_allow_html=True)
                 st.markdown(f'<div class="stats-card card-teal"><div class="stats-label">Next Update</div><div class="stats-value" style="font-size: 28px;">{next_update.strftime('%b %d, %Y')  }</div></div>', unsafe_allow_html=True)
             with m_col2:
-                st.markdown('<div class="stats-card card-green"><div class="stats-label">Federated Round</div><div class="stats-value">v4.2.1</div></div>', unsafe_allow_html=True)
-                st.markdown('<div class="stats-card card-blue"><div class="stats-label">Participating Hospitals</div><div class="stats-value">12</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="stats-card card-green"><div class="stats-label">Federated Round</div><div class="stats-value">Round {fed_round}</div></div>',unsafe_allow_html=True)
+                st.markdown(f'<div class="stats-card card-blue"><div class="stats-label">Participating Hospitals</div><div class="stats-value">{len(hospitals)}</div></div>',unsafe_allow_html=True)
 
     elif choice == "Local Model Update":
         show_local_model_update()

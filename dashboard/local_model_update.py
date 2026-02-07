@@ -2,7 +2,8 @@ import streamlit as st
 import time
 import sys
 import os
-import io
+import pandas as pd
+import json
 
 # -------------------------------------------------------
 # Path setup
@@ -13,31 +14,55 @@ if ROOT_DIR not in sys.path:
 
 from notebooks.pipeline_runner import run_pipeline
 
+# -------------------------------------------------------
+# Persistent Metrics Storage
+# -------------------------------------------------------
+METRICS_FILE = os.path.join(ROOT_DIR, "data", "training_metrics.json")
+
+
+def load_metrics():
+    if os.path.exists(METRICS_FILE):
+        with open(METRICS_FILE, "r") as f:
+            return json.load(f)
+    return {
+        "accuracy": "—",
+        "analysis_time": "—",
+        "last_update_time": "—"
+    }
+
+
+def save_metrics(accuracy, analysis_time, last_update_time):
+    os.makedirs(os.path.dirname(METRICS_FILE), exist_ok=True)
+    with open(METRICS_FILE, "w") as f:
+        json.dump({
+            "accuracy": accuracy,
+            "analysis_time": analysis_time,
+            "last_update_time": last_update_time
+        }, f)
+
 
 def show_local_model_update():
 
     # -------------------------------------------------------
-    # Session state (STATIC – status UI retained but unused)
+    # Load persisted metrics
     # -------------------------------------------------------
-    if "steps" not in st.session_state:
-        st.session_state.steps = {
-            1: ("waiting", "WAITING"),
-            2: ("pending", "PENDING"),
-            3: ("pending", "PENDING"),
-            4: ("pending", "PENDING"),
-            5: ("pending", "PENDING"),
-        }
+    stored_metrics = load_metrics()
 
     if "accuracy" not in st.session_state:
-        st.session_state.accuracy = "—"
+        st.session_state.accuracy = stored_metrics["accuracy"]
+
+    if "analysis_time" not in st.session_state:
+        st.session_state.analysis_time = stored_metrics["analysis_time"]
+
+    if "last_update_time" not in st.session_state:
+        st.session_state.last_update_time = stored_metrics["last_update_time"]
 
     if "progress" not in st.session_state:
         st.session_state.progress = 0
 
-    # Dummy function (kept to avoid breaking structure)
-    def update_status(*args, **kwargs):
-        pass
-    # css code
+    # -------------------------------------------------------
+    # CSS
+    # -------------------------------------------------------
     st.markdown("""
         <style>
         .metric-box {
@@ -56,154 +81,127 @@ def show_local_model_update():
         }
         .arrow-step {
             flex: 1;
-            position: relative;
-            background: #94a3b8; 
+            background: #2563eb;
             color: white;
             padding: 12px 5px;
             text-align: center;
             font-weight: bold;
             clip-path: polygon(90% 0%, 100% 50%, 90% 100%, 0% 100%, 10% 50%, 0% 0%);
         }
-        .step-title { font-size: 10px; display: block; margin-bottom: 2px; }
-        .step-status { font-size: 9px; display: block; text-transform: uppercase; opacity: 0.9; }
-        .desc-section {
-            background: #f8fafc;
-            border-radius: 10px;
-            padding: 20px;
-            border: 1px solid #e2e8f0;
-        }
+        .step-title { font-size: 11px; display: block; }
         </style>
     """, unsafe_allow_html=True)
 
     st.title("🔄 Federated Model Training")
 
     # -------------------------------------------------------
-    # 1. File Upload Section
+    # File Upload
     # -------------------------------------------------------
     with st.container(border=True):
         st.subheader("📁 Data Source")
         uploaded_file = st.file_uploader(
-            "Upload CSV file for local training",
+            "Upload CSV file for federated training",
             type=["csv"]
         )
-        if uploaded_file is not None:
-            st.success(f"File '{uploaded_file.name}' ready for processing.")
+        if uploaded_file:
+            st.success(f"File '{uploaded_file.name}' uploaded successfully")
 
     st.markdown("---")
 
     # -------------------------------------------------------
-    # 2. Metrics (ACCURACY UPDATED AFTER PIPELINE)
+    # Metrics
     # -------------------------------------------------------
     col1, col2, col3 = st.columns(3)
+
     with col1:
         st.markdown(
-            f'<div class="metric-box"><p style="color:#10b981; margin:0;">'
-            f'✅ Accuracy</p><h2 style="margin:0;">'
-            f'{st.session_state.accuracy}</h2></div>',
+            f'<div class="metric-box"><p>Accuracy</p>'
+            f'<h2>{st.session_state.accuracy}</h2></div>',
             unsafe_allow_html=True
         )
+
     with col2:
         st.markdown(
-            f'<div class="metric-box"><p style="color:#64748b; margin:0;">'
-            f'🕒 Time of Update</p><h2 style="margin:0;">'
-            f'{time.strftime("%H:%M")}</h2></div>',
+            f'<div class="metric-box"><p>Last Update</p>'
+            f'<h2>{st.session_state.last_update_time}</h2></div>',
             unsafe_allow_html=True
         )
+
     with col3:
         st.markdown(
-            '<div class="metric-box"><p style="color:#64748b; margin:0;">'
-            '⏱️ Analysis Time</p><h2 style="margin:0;">15 secs</h2></div>',
+            f'<div class="metric-box"><p>Analysis Time</p>'
+            f'<h2>{st.session_state.analysis_time}</h2></div>',
             unsafe_allow_html=True
         )
 
     # -------------------------------------------------------
-    # 3. Status from session state (STATIC)
+    # Live Status (Complete Section)
     # -------------------------------------------------------
-    s1, s1_label = st.session_state.steps[1]
-    s2, s2_label = st.session_state.steps[2]
-    s3, s3_label = st.session_state.steps[3]
-    s4, s4_label = st.session_state.steps[4]
-    s5, s5_label = st.session_state.steps[5]
+    st.subheader("📊 Live Status")
 
-    # -------------------------------------------------------
-    # 4. Live Status Arrows (UNCHANGED)
-    # -------------------------------------------------------
-    st.markdown(f"""
-        <div class="step-wrapper">
-            <div class="arrow-step {s1}">
-                <span class="step-title">1. Preprocessing</span>
-                <span class="step-status">{s1_label}</span>
-            </div>
-            <div class="arrow-step {s2}">
-                <span class="step-title">2. Graph Construction</span>
-                <span class="step-status">{s2_label}</span>
-            </div>
-            <div class="arrow-step {s3}">
-                <span class="step-title">3. Local Update</span>
-                <span class="step-status">{s3_label}</span>
-            </div>
-            <div class="arrow-step {s4}">
-                <span class="step-title">4. LDP Applying</span>
-                <span class="step-status">{s4_label}</span>
-            </div>
-            <div class="arrow-step {s5}">
-                <span class="step-title">5. Global Server</span>
-                <span class="step-status">{s5_label}</span>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    with st.container(border=True):
+        if uploaded_file:
+            st.write("**Current Phase:** Federated Local Training → Secure Upload")
+            st.progress(st.session_state.progress)
+            st.code(
+                ">>> Loading hospital data\n"
+                ">>> Running federated local update\n"
+                ">>> Applying privacy constraints\n"
+                ">>> Sending update to global server",
+                language="python"
+            )
+        else:
+            st.info("Upload a CSV file to begin federated training")
 
     # -------------------------------------------------------
-    # 5. Live Status + Description (STATIC)
+    # Execution
     # -------------------------------------------------------
-    c1, c2 = st.columns([1, 1])
+    if st.button(" Run Training Round", type="primary", disabled=uploaded_file is None):
 
-    with c1:
-        st.subheader("📊 Live Status")
-        with st.container(border=True):
-            if uploaded_file:
-                st.write("**Current Phase:** Federated Training")
-                st.progress(st.session_state.progress)
-                st.code(
-                    ">>> Executing Federated GNN Pipeline...\n"
-                    ">>> Running on server...",
-                    language="python"
-                )
-            else:
-                st.info("Upload a CSV file to begin.")
+        start_time = time.time()
+        st.session_state.progress = 20
 
-    with c2:
-        st.subheader("📝 Process Description")
-        st.markdown("""
-        <div class="desc-section">
-            <b>Federated GNN Pipeline:</b><br>
-            Data is preprocessed and mapped to clinical graphs. Local Differential
-            Privacy (LDP) is applied to weights before they are <b>SENT</b> to
-            the global server for aggregation.
-        </div>
-        """, unsafe_allow_html=True)
+        with st.spinner("Running Federated Training Pipeline..."):
 
-    # -------------------------------------------------------
-    # 6. EXECUTION BUTTON (UPDATED)
-    # -------------------------------------------------------
-    if st.button("🚀 Run Training Round", type="primary", disabled=uploaded_file is None):
+            # Save uploaded CSV to pipeline data location
+            data_dir = os.path.join(ROOT_DIR, "data")
+            os.makedirs(data_dir, exist_ok=True)
 
-        with st.spinner("Processing Pipeline..."):
+            csv_path = os.path.join(data_dir, "uploaded_local_data.csv")
+            with open(csv_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
 
-            import pandas as pd
+            st.session_state.progress = 50
 
-        # Read uploaded CSV directly
-        df = pd.read_csv(uploaded_file)
-
-        try:
             original_cwd = os.getcwd()
             os.chdir(os.path.join(ROOT_DIR, "notebooks"))
 
-            noised_acc = run_pipeline(df)
+            try:
+                # Pipeline reads CSV internally
+                accuracy = run_pipeline()
+            finally:
+                os.chdir(original_cwd)
 
-            st.session_state.accuracy = f"{noised_acc:.2%}"
-            st.success("Global Model Updated Successfully!")
+            st.session_state.progress = 90
+            end_time = time.time()
+
+            # -------------------------------------------------------
+            # Real metrics + persistence
+            # -------------------------------------------------------
+            accuracy_str = f"{accuracy:.2%}"
+            analysis_time_str = f"{end_time - start_time:.2f} sec"
+            last_update_str = time.strftime("%H:%M:%S")
+
+            st.session_state.accuracy = accuracy_str
+            st.session_state.analysis_time = analysis_time_str
+            st.session_state.last_update_time = last_update_str
+
+            save_metrics(
+                accuracy=accuracy_str,
+                analysis_time=analysis_time_str,
+                last_update_time=last_update_str
+            )
+
+            st.session_state.progress = 100
+            st.success("✅ Global Model Updated Successfully")
             st.rerun()
-
-        finally:
-            os.chdir(original_cwd)
