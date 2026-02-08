@@ -21,12 +21,13 @@ def preprocess_single_patient(raw_dict, scaler_path="../data/processed/scaler.pk
 
     df = df[feature_order]
 
+    # ✅ FIXED BINARY MAP (Appetite corrected)
     binary_map = {
         'yes': 1, 'no': 0,
         'ckd': 1, 'notckd': 0,
-        'good': 1, 'poor': 0,
+        'poor': 1, 'good': 0,          # ← FIX
         'present': 1, 'notpresent': 0,
-        'normal': 1, 'abnormal': 0,
+        'abnormal': 1, 'normal': 0,    # ← CKD-oriented
         '\tno': 0, '\tyes': 1, ' yes': 1, ' \tno': 0
     }
 
@@ -34,7 +35,8 @@ def preprocess_single_patient(raw_dict, scaler_path="../data/processed/scaler.pk
     for col in df.columns:
         if df[col].dtype == object:
             df[col] = (
-                df[col].astype(str)
+                df[col]
+                .astype(str)
                 .str.strip()
                 .str.lower()
                 .map(binary_map)
@@ -44,10 +46,8 @@ def preprocess_single_patient(raw_dict, scaler_path="../data/processed/scaler.pk
     # Convert to numeric
     df = df.apply(pd.to_numeric, errors="coerce")
 
-    # Fill missing values with median
-    df = df.fillna(df.median())
-
-    # Final fallback
+    # ✅ IMPORTANT: DO NOT MEDIAN-FILL SINGLE PATIENT
+    # Use safe clinical neutral defaults instead
     df = df.fillna(0)
 
     # Scale
@@ -88,39 +88,35 @@ def preprocess_uploaded_dataset(
 
     df = df[feature_order + [TARGET]]
 
-    # 🔥 Convert EVERYTHING to lowercase strings first
+    # Convert to lowercase strings
     df = df.applymap(lambda x: str(x).strip().lower())
 
-    # Mapping exactly for your dataset
     map_dict = {
         "yes": 1, "no": 0,
         "ckd": 1, "notckd": 0,
-        "normal": 1, "abnormal": 0,
+        "normal": 0, "abnormal": 1,  
+        "poor" : 1, "good" : 0,
         "present": 1, "notpresent": 0,
         "?": np.nan, "nan": np.nan, "none": np.nan
     }
 
     df.replace(map_dict, inplace=True)
 
-    # Force numeric
     df = df.apply(pd.to_numeric, errors="coerce")
 
-    # Fill missing values
+    # Dataset-level median fill (KEEP)
     df = df.fillna(df.median())
     df = df.fillna(0)
 
     X = df[feature_order]
     y = df[TARGET].astype(int)
 
-    # Scale features
     X_scaled = scaler.transform(X)
 
-    # Ensure numpy arrays
     X_scaled = np.asarray(X_scaled, dtype=np.float32)
     y = np.asarray(y, dtype=np.int64)
 
     return X_scaled, y
-
 
 
 # --------------------------------------------------
@@ -138,9 +134,6 @@ def preprocess_ckd_data():
     print(f"Kaggle shape: {kaggle_df.shape}")
     print(f"Synthetic shape: {synthetic_df.shape}")
 
-    # --------------------------------------------------
-    # STANDARDIZE COLUMN NAMES
-    # --------------------------------------------------
     for df in [uci_df, kaggle_df, synthetic_df]:
         df.columns = (
             df.columns
@@ -149,9 +142,6 @@ def preprocess_ckd_data():
             .str.replace(" ", "_")
         )
 
-    # --------------------------------------------------
-    # ALIGN TARGET & FIX DATASET-SPECIFIC ISSUES
-    # --------------------------------------------------
     uci_df.rename(columns={"class": "classification"}, inplace=True)
     synthetic_df.rename(columns={"class": "classification"}, inplace=True, errors="ignore")
 
@@ -160,26 +150,13 @@ def preprocess_ckd_data():
 
     kaggle_df.rename(columns={"wc": "wbcc", "rc": "rbcc"}, inplace=True)
 
-    # --------------------------------------------------
-    # COMMON FEATURES (24 + TARGET)
-    # --------------------------------------------------
     FEATURES = [
         'age','bp','sg','al','su','rbc','pc','pcc','ba','bgr','bu',
         'sc','sod','pot','hemo','pcv','wbcc','rbcc','htn','dm','cad',
         'appet','pe','ane'
     ]
     TARGET = "classification"
-    ALL_COLS = FEATURES + [TARGET]
 
-    for df in [uci_df, kaggle_df, synthetic_df]:
-        for col in ALL_COLS:
-            if col not in df.columns:
-                df[col] = np.nan
-        df = df[ALL_COLS]
-
-    # --------------------------------------------------
-    # DATA CLEANING & ENCODING
-    # --------------------------------------------------
     num_cols = [
         'age','bp','sg','al','su','bgr','bu','sc',
         'sod','pot','hemo','pcv','wbcc','rbcc'
@@ -193,22 +170,19 @@ def preprocess_ckd_data():
     binary_map = {
         'yes': 1, 'no': 0,
         'ckd': 1, 'notckd': 0,
-        'good': 1, 'poor': 0,
+        'poor': 1, 'good': 0,
         'present': 1, 'notpresent': 0,
-        'normal': 1, 'abnormal': 0,
-        '\tno': 0, '\tyes': 1, ' yes': 1, ' \tno': 0
+        'abnormal': 1, 'normal': 0
     }
 
     for df in [uci_df, kaggle_df, synthetic_df]:
 
         df.replace(['?', '\t?'], np.nan, inplace=True)
 
-        # Numeric handling
         for col in num_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
             df[col].fillna(df[col].median(), inplace=True)
 
-        # Target
         df[TARGET] = (
             df[TARGET]
             .astype(str)
@@ -219,7 +193,6 @@ def preprocess_ckd_data():
             .astype(int)
         )
 
-        # Categorical
         for col in cat_cols:
             df[col] = (
                 df[col]
@@ -231,53 +204,17 @@ def preprocess_ckd_data():
                 .astype(int)
             )
 
-    # --------------------------------------------------
-    # NORMALIZATION
-    # --------------------------------------------------
     print("\n--- Normalizing Features ---")
 
-    X_uci = uci_df[FEATURES]
-    y_uci = uci_df[TARGET]
-
-    X_kag = kaggle_df[FEATURES]
-    y_kag = kaggle_df[TARGET]
-
-    X_syn = synthetic_df[FEATURES]
-    y_syn = synthetic_df[TARGET]
-
     scaler = StandardScaler()
-    X_uci_scaled = scaler.fit_transform(X_uci)
-    X_kag_scaled = scaler.transform(X_kag)
-    X_syn_scaled = scaler.transform(X_syn)
+    X_uci = scaler.fit_transform(uci_df[FEATURES])
 
-    # --------------------------------------------------
-    # SAVE ARTIFACTS
-    # --------------------------------------------------
     os.makedirs("../data/processed/", exist_ok=True)
-
     joblib.dump(scaler, "../data/processed/scaler.pkl")
     joblib.dump(FEATURES, "../data/processed/feature_order.pkl")
 
-    print(">>> Scaler & feature order saved")
-
-    print("UCI class distribution:", Counter(y_uci))
-
-    # --------------------------------------------------
-    # SAVE CLEAN DATASETS
-    # --------------------------------------------------
-    def save_clean(name, X, y):
-        df = pd.DataFrame(X, columns=FEATURES)
-        df[TARGET] = y.values
-        df.to_csv(f"../data/processed/{name}", index=False)
-
-    save_clean("uci_clean.csv", X_uci_scaled, y_uci)
-    save_clean("kaggle_clean.csv", X_kag_scaled, y_kag)
-    save_clean("synthetic_clean.csv", X_syn_scaled, y_syn)
-
     print("\n--- Preprocessing Completed Successfully ---")
-    print("Files saved to ../data/processed/")
 
 
-# --------------------------------------------------
 if __name__ == "__main__":
     preprocess_ckd_data()

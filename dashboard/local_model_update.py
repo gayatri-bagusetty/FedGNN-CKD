@@ -3,6 +3,8 @@ import time
 import sys
 import os
 import json
+from database import get_federated_state, update_federated_state
+
 
 # -------------------------------------------------------
 # Path setup
@@ -149,6 +151,17 @@ def show_local_model_update():
 
             # Call pipeline
             acc, logs = run_incremental_update(csv_path)
+            # -------------------------------------------------------
+            # Increment Federated Round (DB STORED)
+            # -------------------------------------------------------
+            fed_state = get_federated_state()
+            current_round = fed_state["round"]
+            current_hospitals = fed_state["hospitals"]
+
+            update_federated_state(
+                fed_round=current_round + 1,
+                hospitals_count=current_hospitals
+            )
 
             # Live logs + circular progress
             log_text = ""
@@ -186,7 +199,8 @@ def show_local_model_update():
             # -------------------------------------------------------
             accuracy_str = f"{acc:.2%}"
             analysis_time_str = f"{end_time - start_time:.2f} sec"
-            last_update_str = time.strftime("%H:%M:%S")
+            last_update_str = time.strftime("%I:%M %p")
+
 
             st.session_state.accuracy = accuracy_str
             st.session_state.analysis_time = analysis_time_str
@@ -199,4 +213,3 @@ def show_local_model_update():
             )
 
             st.success("✅ Global Model Updated Successfully")
-            st.rerun()

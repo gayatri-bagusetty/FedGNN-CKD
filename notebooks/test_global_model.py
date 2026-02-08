@@ -26,26 +26,30 @@ def test_on_hospital(global_model, hospital_id):
     
     global_model.eval()
     with torch.no_grad():
-        # Forward pass on the full graph of the hospital
         out = global_model(graph.x, graph.edge_index)
         preds = out.argmax(dim=1).cpu().numpy()
         labels = graph.y.cpu().numpy()
 
     acc = accuracy_score(labels, preds)
-    # Output metrics as a dictionary
-    report = classification_report(labels, preds, target_names=['Not CKD', 'CKD'], output_dict=True, zero_division=0)
-    return acc, report
+    report = classification_report(
+        labels, preds,
+        target_names=['Not CKD', 'CKD'],
+        output_dict=True,
+        zero_division=0
+    )
+
+    num_samples = len(labels)
+    return acc, report, num_samples
 
 def main():
     model_path = "../data/models/global_model.pth"
-    hospitals = ['A', 'B', 'C'] # UCI, Kaggle, Synthetic
+    hospitals = ['A', 'B', 'C']  # UCI, Kaggle, Synthetic
 
     if not os.path.exists(model_path):
         print(f"Error: Global model file not found at {model_path}.")
         return
 
-    # 1. Initialize Global Model (Architecture must match 24 features)
-    # We assume 24 features based on the updated preprocessing
+    # Initialize Global Model
     global_model = GCN(input_dim=24, hidden_dim=32, output_dim=2).to(device)
     
     try:
@@ -59,28 +63,45 @@ def main():
     print("GLOBAL MODEL MULTI-HOSPITAL EVALUATION")
     print("="*40)
 
-    results = []
+    hospital_results = []
 
-    # 2. Iterate through each hospital to test generalization
+    # Evaluate per hospital
     for h in hospitals:
         source_name = "UCI" if h == 'A' else "Kaggle" if h == 'B' else "Synthetic"
         print(f"\nEvaluating Hospital {h} ({source_name})...")
-        
+
         eval_result = test_on_hospital(global_model, h)
-        
         if eval_result:
-            acc, report = eval_result
-            results.append(acc)
+            acc, report, samples = eval_result
+            hospital_results.append({
+                "hospital": h,
+                "accuracy": acc,
+                "samples": samples
+            })
+
             print(f"  Accuracy:  {acc:.4f}")
             print(f"  Precision: {report['CKD']['precision']:.4f}")
             print(f"  Recall:    {report['CKD']['recall']:.4f}")
             print(f"  F1-Score:  {report['CKD']['f1-score']:.4f}")
 
-    # 3. Final Federated Performance Summary
-    if results:
-        avg_acc = np.mean(results)
+    # ===== Federated Summary (Solution 2) =====
+    if hospital_results:
+        accuracies = [h["accuracy"] for h in hospital_results]
+        samples = [h["samples"] for h in hospital_results]
+
+        # Macro Average (Fairness)
+        macro_acc = np.mean(accuracies)
+
+        # Micro Average (Data-weighted / Deployment)
+        micro_acc = np.sum(
+            [a * n for a, n in zip(accuracies, samples)]
+        ) / np.sum(samples)
+
         print("\n" + "="*40)
-        print(f"AVERAGE FEDERATED ACCURACY: {avg_acc:.4f}")
+        print("FEDERATED PERFORMANCE SUMMARY")
+        print("="*40)
+        print(f"Macro Federated Accuracy (Fairness):     {macro_acc:.4f}")
+        print(f"Micro Federated Accuracy (Deployment):   {micro_acc:.4f}")
         print("="*40)
 
 if __name__ == "__main__":
