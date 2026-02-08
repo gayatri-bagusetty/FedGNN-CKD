@@ -90,3 +90,51 @@ def get_total_users():
         return 0
     finally:
         conn.close()
+        
+def get_classification_stats():
+    conn = get_db_connection()
+    if not conn: return {"CKD": 0, "Non-CKD": 0}
+    try:
+        cursor = conn.cursor(dictionary=True)
+        # Counts how many 'CKD' and 'Non-CKD' entries exist
+        cursor.execute("SELECT Result, COUNT(*) as count FROM patients GROUP BY Result")
+        rows = cursor.fetchall()
+        
+        stats = {"CKD": 0, "Non-CKD": 0}
+        for row in rows:
+            if row['Result'] in stats:
+                stats[row['Result']] = row['count']
+        return stats
+    except:
+        return {"CKD": 0, "Non-CKD": 0}
+    finally:
+        conn.close()
+        
+
+def get_federated_state():
+    conn = get_db_connection()
+    if not conn: return {"round": 0, "hospitals": 0}
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT meta_key, meta_value FROM system_metadata WHERE meta_key IN ('fed_round', 'active_hospitals')")
+        rows = cursor.fetchall()
+        state = {"round": 0, "hospitals": 0}
+        for row in rows:
+            if row['meta_key'] == 'fed_round': state['round'] = int(row['meta_value'])
+            if row['meta_key'] == 'active_hospitals': state['hospitals'] = int(row['meta_value'])
+        return state
+    except:
+        return {"round": 0, "hospitals": 0}
+    finally:
+        conn.close()
+
+def update_federated_state(fed_round, hospitals_count):
+    conn = get_db_connection()
+    if not conn: return
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE system_metadata SET meta_value = %s WHERE meta_key = 'fed_round'", (str(fed_round),))
+        cursor.execute("UPDATE system_metadata SET meta_value = %s WHERE meta_key = 'active_hospitals'", (str(hospitals_count),))
+        conn.commit()
+    finally:
+        conn.close()

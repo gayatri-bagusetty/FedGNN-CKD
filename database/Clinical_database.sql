@@ -63,3 +63,12 @@ CREATE TABLE IF NOT EXISTS patients (
 
 Select * from patients;
 TRUNCATE TABLE patients;
+
+CREATE TABLE IF NOT EXISTS system_metadata (
+    meta_key VARCHAR(50) PRIMARY KEY,
+    meta_value VARCHAR(50)
+);
+
+INSERT INTO system_metadata (meta_key, meta_value) 
+VALUES ('fed_round', '1'), ('active_hospitals', '3')
+ON DUPLICATE KEY UPDATE meta_value=meta_value;

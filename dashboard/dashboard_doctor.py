@@ -3,7 +3,8 @@ import pandas as pd
 from datetime import datetime
 import os
 import sys
-from database import save_patient_data, fetch_all_patients,get_total_patients
+import plotly.express as px # Added for the donut chart
+from database import save_patient_data, fetch_all_patients, get_total_patients, get_classification_stats
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from clinical_engine import ClinicalInferenceEngine
@@ -228,7 +229,6 @@ def doctor_dashboard():
         .stats-delta { font-size: 1rem; color: #d32f2f; }
         
         /* Individual Card Colors */
-        .card-red { background-color: #FEE2E2; color: #991B1B; }
         .card-green { background-color: #DCFCE7; color: #166534; }
         .card-teal { background-color: #F0FDFA; color: #115E59; }
         .card-blue { background-color: #DBEAFE; color: #1E40AF; }
@@ -257,37 +257,42 @@ def doctor_dashboard():
             """, unsafe_allow_html=True)
         
         with col_stats:
-            # Quick Stats Header and Grid (Matches Image 2 Style)
             st.markdown("<h3 style='text-align: center; color: Teal;'>Quick Stats</h3>", unsafe_allow_html=True)
-        
-            # Grid Layout for Stats
             m_col1, m_col2 = st.columns(2)
-            db_patient_count = get_total_patients()
-            with m_col1:
-                st.markdown(f"""
-                <div class="stats-card card-red">
-                    <div class="stats-label">Total Analyzed</div>
-                    <div class="stats-value">{db_patient_count}</div>
-                </div>
-                <div class="stats-card card-teal">
-                    <div class="stats-label">Last AI Confidence</div>
-                    <div class="stats-value">94.7%</div>
-                </div>
-            """, unsafe_allow_html=True)
+            db_patient_count = 20 + get_total_patients()
+            total_analyzed = get_total_patients()
             
+            with m_col1:
+                st.markdown(f'<div class="stats-card card-green"><div class="stats-label">Total Analyzed</div><div class="stats-value">{total_analyzed}</div></div>', unsafe_allow_html=True)
             with m_col2:
-                st.markdown("""
-                <div class="stats-card card-green">
-                    <div class="stats-label">High Risk Patients</div>
-                    <div class="stats-value">156 <span class="stats-delta">↑</span></div>
-                </div>
-                <div class="stats-card card-blue">
-                    <div class="stats-label">No. of Patients</div>
-                    <div class="stats-value">20</div>
-                </div>
-                    """, unsafe_allow_html=True)
+                st.markdown(f'<div class="stats-card card-blue"><div class="stats-label">No. of Patients</div><div class="stats-value">{db_patient_count}</div></div>', unsafe_allow_html=True)
 
-        st.markdown("<br><br>", unsafe_allow_html=True)
+            # LIVE DONUT CHART
+            class_stats = get_classification_stats()
+            if sum(class_stats.values()) > 0:
+                fig = px.pie(
+                    values=list(class_stats.values()), 
+                    names=list(class_stats.keys()), 
+                    hole=0.5,
+                    color=list(class_stats.keys()),
+                    color_discrete_map={'CKD': '#ef4444', 'Non-CKD': '#10b981'}
+                )
+                # Centering logic
+                fig.update_layout(
+                    showlegend=True,
+                    legend=dict(
+                        orientation="h",    # Horizontal legend
+                        yanchor="bottom",
+                        y=-0.2,             # Move legend below chart
+                        xanchor="center",
+                        x=0.5               # Center legend horizontally
+                    ),
+                    height=280, 
+                    margin=dict(t=10, b=10, l=10, r=10) # Tight margins to keep it centered
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No classification data recorded.")
     elif choice == "Analysis":
         analysis_tool(engine)
     elif choice == "Records":
