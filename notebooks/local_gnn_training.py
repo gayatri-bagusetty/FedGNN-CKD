@@ -3,8 +3,8 @@ import torch.nn.functional as F
 import os
 import sys
 from sklearn.metrics import accuracy_score
-# from notebooks.resource_monitor import ResourceMonitor
-from resource_monitor import ResourceMonitor
+from notebooks.resource_monitor import ResourceMonitor
+# from resource_monitor import ResourceMonitor
 
 # Ensure pathing for GCN model import
 sys.path.append(os.path.abspath(".."))
