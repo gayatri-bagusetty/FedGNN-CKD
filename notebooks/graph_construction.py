@@ -43,32 +43,57 @@ def build_graph(X, y, k=5):
     )
     return graph
 
-def visualize_graph(graph, title, save_path, max_nodes=100, show=False):
+def visualize_graph(graph, title, save_path, max_nodes=100):
     """
     Visualize PyG graph using NetworkX and save image
     """
+    import matplotlib.pyplot as plt
+    import networkx as nx
+    from torch_geometric.utils import to_networkx
+    import numpy as np
+
     g_nx = to_networkx(graph, to_undirected=True)
 
     if g_nx.number_of_nodes() > max_nodes:
         g_nx = g_nx.subgraph(list(g_nx.nodes)[:max_nodes])
 
-    plt.figure(figsize=(8, 6))
+    # ---- Node colors (if labels exist) ----
+    if hasattr(graph, "y"):
+        labels = graph.y[:g_nx.number_of_nodes()].cpu().numpy()
+        colors = ["red" if l == 1 else "green" for l in labels]  # CKD=red, Non-CKD=green
+    else:
+        colors = "skyblue"
+
+    # ---- Node sizes (based on degree) ----
+    degrees = dict(g_nx.degree())
+    sizes = [degrees[n] * 30 for n in g_nx.nodes()]
+
+    plt.figure(figsize=(10, 8))
     pos = nx.spring_layout(g_nx, seed=42)
+
     nx.draw(
         g_nx,
         pos,
-        node_size=50,
-        node_color="skyblue",
+        node_size=sizes,
+        node_color=colors,
         edge_color="gray",
+        alpha=0.8,
         with_labels=False
     )
-    plt.title(title)
+
+    # ---- Legend ----
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], marker='o', color='w', label='CKD',
+               markerfacecolor='red', markersize=8),
+        Line2D([0], [0], marker='o', color='w', label='Non-CKD',
+               markerfacecolor='green', markersize=8)
+    ]
+    plt.legend(handles=legend_elements, loc="best")
+
+    plt.title(title, fontsize=12)
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    
-    # if show:
-    #     plt.show()
-    # else:
-    #     plt.close()
+    plt.close()
 
 
 def main():
@@ -108,8 +133,7 @@ def main():
         visualize_graph(
             graph,
             title=f"Hospital {h_id} Graph",
-            save_path=img_path,
-            show=True
+            save_path=img_path
         )
         print(f"Graph images are saved")
 

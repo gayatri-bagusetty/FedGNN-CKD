@@ -104,7 +104,7 @@ def plot_tradeoff(epsilons, accuracies, clean_acc, hospital_label):
     plt.close() # Close to prevent display overlap in pipeline
 
 def main():
-    eps_values = [1.5, 2, 3, 4, 5]
+    eps_values = [0.5, 1, 1.5, 2, 2.5, 3]
     hospitals = ['A', 'B', 'C']
     graph_dir = "../data/graph"
     model_dir = "../data/models"
