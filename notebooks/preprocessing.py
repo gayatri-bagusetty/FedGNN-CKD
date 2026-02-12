@@ -9,6 +9,7 @@ from collections import Counter
 # SINGLE PATIENT PREPROCESSING (FOR DASHBOARD / API)
 # --------------------------------------------------
 def preprocess_single_patient(raw_dict, scaler_path="../data/processed/scaler.pkl"):
+
     scaler = joblib.load(scaler_path)
     feature_order = joblib.load("../data/processed/feature_order.pkl")
 
@@ -21,14 +22,14 @@ def preprocess_single_patient(raw_dict, scaler_path="../data/processed/scaler.pk
 
     df = df[feature_order]
 
-    # ✅ FIXED BINARY MAP (Appetite corrected)
     binary_map = {
         'yes': 1, 'no': 0,
         'ckd': 1, 'notckd': 0,
-        'poor': 1, 'good': 0,          # ← FIX
+        'poor': 1, 'good': 0,
         'present': 1, 'notpresent': 0,
-        'abnormal': 1, 'normal': 0,    # ← CKD-oriented
-        '\tno': 0, '\tyes': 1, ' yes': 1, ' \tno': 0
+        'abnormal': 1, 'normal': 0,
+        '\tno': 0, '\tyes': 1,
+        ' yes': 1, ' \tno': 0
     }
 
     # Encode categorical
@@ -43,14 +44,11 @@ def preprocess_single_patient(raw_dict, scaler_path="../data/processed/scaler.pk
                 .fillna(df[col])
             )
 
-    # Convert to numeric
     df = df.apply(pd.to_numeric, errors="coerce")
 
-    # ✅ IMPORTANT: DO NOT MEDIAN-FILL SINGLE PATIENT
-    # Use safe clinical neutral defaults instead
+    # Do NOT median-fill single patient
     df = df.fillna(0)
 
-    # Scale
     x_scaled = scaler.transform(df)
     return x_scaled
 
@@ -62,16 +60,12 @@ def preprocess_uploaded_dataset(
     csv_path="../data/uploaded_local_data.csv",
     scaler_path="../data/processed/scaler.pkl"
 ):
-    import pandas as pd
-    import numpy as np
-    import joblib
 
     scaler = joblib.load(scaler_path)
     feature_order = joblib.load("../data/processed/feature_order.pkl")
 
     df = pd.read_csv(csv_path)
 
-    # Standardize column names
     df.columns = (
         df.columns
         .str.strip()
@@ -81,30 +75,27 @@ def preprocess_uploaded_dataset(
 
     TARGET = "classification"
 
-    # Ensure all required columns exist
     for col in feature_order + [TARGET]:
         if col not in df.columns:
             df[col] = np.nan
 
     df = df[feature_order + [TARGET]]
 
-    # Convert to lowercase strings
     df = df.applymap(lambda x: str(x).strip().lower())
 
     map_dict = {
         "yes": 1, "no": 0,
         "ckd": 1, "notckd": 0,
-        "normal": 0, "abnormal": 1,  
-        "poor" : 1, "good" : 0,
+        "normal": 0, "abnormal": 1,
+        "poor": 1, "good": 0,
         "present": 1, "notpresent": 0,
         "?": np.nan, "nan": np.nan, "none": np.nan
     }
 
     df.replace(map_dict, inplace=True)
-
     df = df.apply(pd.to_numeric, errors="coerce")
 
-    # Dataset-level median fill (KEEP)
+    # Dataset-level median fill
     df = df.fillna(df.median())
     df = df.fillna(0)
 
@@ -112,7 +103,6 @@ def preprocess_uploaded_dataset(
     y = df[TARGET].astype(int)
 
     X_scaled = scaler.transform(X)
-
     X_scaled = np.asarray(X_scaled, dtype=np.float32)
     y = np.asarray(y, dtype=np.int64)
 
@@ -124,23 +114,17 @@ def preprocess_uploaded_dataset(
 # --------------------------------------------------
 def preprocess_ckd_data():
 
-    print("\n----------------- Loading Datasets ---------------------")
+    print("\n--- Loading Datasets ---")
 
-    import pandas as pd
-    import numpy as np
-    import os
-    import joblib
-
-    uci_df = pd.read_csv("../data/raw/ckd_dataset.csv", encoding="latin1")
-    kd_df = pd.read_excel("../data/raw/kidney_disease_binary.xlsx")
-    synthetic_df = pd.read_csv("../data/raw/synthetic_ckd.csv", encoding="latin1")
+    uci_df = pd.read_csv("../data/raw/ckd_dataset.csv")
+    kaggle_df = pd.read_csv("../data/raw/kaggle_ckd.csv")
+    synthetic_df = pd.read_csv("../data/raw/synthetic_ckd.csv")
 
     print(f"UCI shape: {uci_df.shape}")
-    print(f"KD shape: {kd_df.shape}")
+    print(f"Kaggle shape: {kaggle_df.shape}")
     print(f"Synthetic shape: {synthetic_df.shape}")
 
-    # ---------------- Standardize Column Names ----------------
-    for df in [uci_df, kd_df, synthetic_df]:
+    for df in [uci_df, kaggle_df, synthetic_df]:
         df.columns = (
             df.columns
             .str.strip()
@@ -148,17 +132,13 @@ def preprocess_ckd_data():
             .str.replace(" ", "_")
         )
 
-    # ---------------- Rename Target ----------------
     uci_df.rename(columns={"class": "classification"}, inplace=True)
-    kd_df.rename(columns={"target": "classification"}, inplace=True)
     synthetic_df.rename(columns={"class": "classification"}, inplace=True, errors="ignore")
 
-    # Drop ID if exists
-    if "id" in kd_df.columns:
-        kd_df = kd_df.drop(columns=["id"])
+    if "id" in kaggle_df.columns:
+        kaggle_df.drop(columns=["id"], inplace=True)
 
-    # Standardize column names
-    kd_df.rename(columns={"wc": "wbcc", "rc": "rbcc"}, inplace=True)
+    kaggle_df.rename(columns={"wc": "wbcc", "rc": "rbcc"}, inplace=True)
 
     FEATURES = [
         'age','bp','sg','al','su','rbc','pc','pcc','ba','bgr','bu',
@@ -179,29 +159,37 @@ def preprocess_ckd_data():
     ]
 
     binary_map = {
-        'ckd': 0, 'notckd': 1,
         'yes': 1, 'no': 0,
+        'ckd': 1, 'notckd': 0,
+        'poor': 1, 'good': 0,
         'present': 1, 'notpresent': 0,
-        'normal': 0, 'abnormal': 1,
-        'poor': 0, 'good': 1
+        'abnormal': 1, 'normal': 0
     }
 
-    # ---------------- Cleaning & Encoding ----------------
-    for df in [uci_df, kd_df, synthetic_df]:
+    for df in [uci_df, kaggle_df, synthetic_df]:
 
-        # Replace missing markers
         df.replace(['?', '\t?'], np.nan, inplace=True)
 
-        # Numerical columns
         for col in num_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-                df[col] = df[col].fillna(df[col].median())
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+            df[col].fillna(df[col].median(), inplace=True)
 
-        # Target encoding
-        if TARGET in df.columns:
-            df[TARGET] = (
-                df[TARGET]
+            # ✅ Round to 1 decimal point
+            df[col] = df[col].round(1)
+
+        df[TARGET] = (
+            df[TARGET]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .map(binary_map)
+            .fillna(0)
+            .astype(int)
+        )
+
+        for col in cat_cols:
+            df[col] = (
+                df[col]
                 .astype(str)
                 .str.strip()
                 .str.lower()
@@ -210,32 +198,23 @@ def preprocess_ckd_data():
                 .astype(int)
             )
 
-        # Categorical encoding
-        for col in cat_cols:
-            if col in df.columns:
-                df[col] = (
-                    df[col]
-                    .astype(str)
-                    .str.strip()
-                    .str.lower()
-                    .map(binary_map)
-                    .fillna(0)
-                    .astype(int)
-                )
+    print("\n--- Saving Cleaned Raw Files ---")
 
-    # ---------------- Save Cleaned Files ----------------
     os.makedirs("../data/processed/", exist_ok=True)
 
-    uci_df.to_csv("../data/processed/uci_cleaned.csv", index=False)
-    kd_df.to_csv("../data/processed/kd_cleaned.csv", index=False)
-    synthetic_df.to_csv("../data/processed/synthetic_cleaned.csv", index=False)
+    uci_df.to_csv("../data/processed/uci_clean.csv", index=False)
+    kaggle_df.to_csv("../data/processed/kaggle_clean.csv", index=False)
+    synthetic_df.to_csv("../data/processed/synthetic_clean.csv", index=False)
 
-    # Save feature list
-    print("\n Feature_order is saved.")
+    print("\n--- Normalizing Features ---")
+
+    scaler = StandardScaler()
+    X_uci = scaler.fit_transform(uci_df[FEATURES])
+
+    joblib.dump(scaler, "../data/processed/scaler.pkl")
     joblib.dump(FEATURES, "../data/processed/feature_order.pkl")
 
-    print("\n✔ Cleaned datasets saved to data/processed/")
-    print("---------------- Preprocessing Completed Successfully --------------------")
+    print("\n--- Preprocessing Completed Successfully ---")
 
 if __name__ == "__main__":
     preprocess_ckd_data()

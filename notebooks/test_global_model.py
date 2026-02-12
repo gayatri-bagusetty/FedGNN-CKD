@@ -2,7 +2,6 @@ import torch
 import os
 import sys
 import numpy as np
-import pandas as pd
 from sklearn.metrics import accuracy_score, classification_report
 
 # Project path to import GCN model architecture
@@ -13,17 +12,18 @@ from data.models.gcn_model import GCN
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Testing on device: {device}")
 
-def test_on_hospital(global_model, hospital_id):
+def test_on_hospital(global_model, hospital_name):
     """
-    Loads a hospital's specific graph and tests the global model against it.
+    Loads a hospital's TEST graph and tests the global model against it.
     """
-    graph_path = f"../data/graph/graph_{hospital_id}.pt"
+    graph_path = f"../data/graph/test/{hospital_name}_test.pt"
+
     if not os.path.exists(graph_path):
-        print(f"Warning: Graph for Hospital {hospital_id} not found.")
+        print(f"Warning: Test graph for {hospital_name} not found.")
         return None
 
     graph = torch.load(graph_path, weights_only=False).to(device)
-    
+
     global_model.eval()
     with torch.no_grad():
         out = global_model(graph.x, graph.edge_index)
@@ -41,9 +41,10 @@ def test_on_hospital(global_model, hospital_id):
     num_samples = len(labels)
     return acc, report, num_samples
 
+
 def main():
     model_path = "../data/models/global_model.pth"
-    hospitals = ['A', 'B', 'C']  # UCI, Kaggle, Synthetic
+    hospitals = ["hospital_A", "hospital_B", "hospital_C"]
 
     if not os.path.exists(model_path):
         print(f"Error: Global model file not found at {model_path}.")
@@ -51,7 +52,7 @@ def main():
 
     # Initialize Global Model
     global_model = GCN(input_dim=24, hidden_dim=32, output_dim=2).to(device)
-    
+
     try:
         global_model.load_state_dict(torch.load(model_path, map_location=device))
         print(">>> Global model weights loaded successfully.")
@@ -60,15 +61,14 @@ def main():
         return
 
     print("\n" + "="*40)
-    print("GLOBAL MODEL MULTI-HOSPITAL EVALUATION")
+    print("GLOBAL MODEL TEST SET EVALUATION")
     print("="*40)
 
     hospital_results = []
 
-    # Evaluate per hospital
     for h in hospitals:
-        source_name = "UCI" if h == 'A' else "Kaggle" if h == 'B' else "Synthetic"
-        print(f"\nEvaluating Hospital {h} ({source_name})...")
+        source_name = "UCI" if h == "hospital_A" else "Kaggle" if h == "hospital_B" else "Synthetic"
+        print(f"\nEvaluating {h} ({source_name}) on TEST data...")
 
         eval_result = test_on_hospital(global_model, h)
         if eval_result:
@@ -84,7 +84,7 @@ def main():
             print(f"  Recall:    {report['CKD']['recall']:.4f}")
             print(f"  F1-Score:  {report['CKD']['f1-score']:.4f}")
 
-    # ===== Federated Summary (Solution 2) =====
+    # ===== Federated Summary =====
     if hospital_results:
         accuracies = [h["accuracy"] for h in hospital_results]
         samples = [h["samples"] for h in hospital_results]
@@ -98,11 +98,12 @@ def main():
         ) / np.sum(samples)
 
         print("\n" + "="*40)
-        print("FEDERATED PERFORMANCE SUMMARY")
+        print("FEDERATED PERFORMANCE SUMMARY (TEST DATA)")
         print("="*40)
         print(f"Macro Federated Accuracy (Fairness):     {macro_acc:.4f}")
         print(f"Micro Federated Accuracy (Deployment):   {micro_acc:.4f}")
         print("="*40)
+
 
 if __name__ == "__main__":
     main()

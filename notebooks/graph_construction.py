@@ -5,9 +5,6 @@ import os
 from sklearn.neighbors import NearestNeighbors
 from sklearn.impute import SimpleImputer
 from torch_geometric.data import Data
-import matplotlib.pyplot as plt
-import networkx as nx
-from torch_geometric.utils import to_networkx
 
 def build_single_node_graph(x_tensor):
     edge_index = torch.tensor([[0],[0]], dtype=torch.long)
@@ -17,7 +14,6 @@ def build_graph(X, y, k=5):
     X = np.asarray(X, dtype=np.float32)
     y = np.asarray(y, dtype=np.int64)
 
-    # Impute to handle any edge cases in synthetic data
     imputer = SimpleImputer(strategy="constant", fill_value=0)
     X = imputer.fit_transform(X)
 
@@ -43,28 +39,23 @@ def build_graph(X, y, k=5):
     )
     return graph
 
+
 def visualize_graph(graph, title, save_path, max_nodes=100):
-    """
-    Visualize PyG graph using NetworkX and save image
-    """
     import matplotlib.pyplot as plt
     import networkx as nx
     from torch_geometric.utils import to_networkx
-    import numpy as np
 
     g_nx = to_networkx(graph, to_undirected=True)
 
     if g_nx.number_of_nodes() > max_nodes:
         g_nx = g_nx.subgraph(list(g_nx.nodes)[:max_nodes])
 
-    # ---- Node colors (if labels exist) ----
     if hasattr(graph, "y"):
         labels = graph.y[:g_nx.number_of_nodes()].cpu().numpy()
-        colors = ["red" if l == 1 else "green" for l in labels]  # CKD=red, Non-CKD=green
+        colors = ["red" if l == 1 else "green" for l in labels]
     else:
         colors = "skyblue"
 
-    # ---- Node sizes (based on degree) ----
     degrees = dict(g_nx.degree())
     sizes = [degrees[n] * 30 for n in g_nx.nodes()]
 
@@ -81,7 +72,6 @@ def visualize_graph(graph, title, save_path, max_nodes=100):
         with_labels=False
     )
 
-    # ---- Legend ----
     from matplotlib.lines import Line2D
     legend_elements = [
         Line2D([0], [0], marker='o', color='w', label='CKD',
@@ -98,8 +88,11 @@ def visualize_graph(graph, title, save_path, max_nodes=100):
 
 def main():
     input_base_path = "../data/processed"
-    output_path = "../data/graph"
-    os.makedirs(output_path, exist_ok=True)
+    output_base_path = "../data/graph"
+    test_output_path = os.path.join(output_base_path, "test")
+
+    os.makedirs(output_base_path, exist_ok=True)
+    os.makedirs(test_output_path, exist_ok=True)
 
     hospitals = ["hospital_A", "hospital_B", "hospital_C"]
 
@@ -127,12 +120,18 @@ def main():
 
             graph = build_graph(X, y, k=5)
 
-            save_name = f"{hospital}_{split}.pt"
-            save_path = os.path.join(output_path, save_name)
+            # ---------- SAVE PATH LOGIC ----------
+            if split == "test":
+                save_name = f"{hospital}_test.pt"
+                save_path = os.path.join(test_output_path, save_name)
+                img_path = os.path.join(test_output_path, f"{hospital}_test.png")
+            else:
+                save_name = f"{hospital}_{split}.pt"
+                save_path = os.path.join(output_base_path, save_name)
+                img_path = os.path.join(output_base_path, f"{hospital}_{split}.png")
+            # -------------------------------------
 
             torch.save(graph, save_path)
-
-            img_path = os.path.join(output_path, f"{hospital}_{split}.png")
 
             visualize_graph(
                 graph,
@@ -142,7 +141,8 @@ def main():
 
             print(f"Stored in {save_path}")
 
-    print("All hospital graphs created successfully.")
+    print("All hospital graphs (train/val + test separately) created successfully.")
+
 
 if __name__ == "__main__":
     main()

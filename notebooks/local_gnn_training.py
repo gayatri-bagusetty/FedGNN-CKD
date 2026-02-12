@@ -2,9 +2,13 @@ import torch
 import torch.nn.functional as F
 import os
 import sys
+import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score
-from notebooks.resource_monitor import ResourceMonitor
+
+# USE SAME MONITOR STYLE AS CODE-1
 # from resource_monitor import ResourceMonitor
+from notebooks.resource_monitor import ResourceMonitor
 
 # Ensure pathing for GCN model import
 sys.path.append(os.path.abspath(".."))
@@ -12,15 +16,27 @@ from data.models.gcn_model import GCN
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def train_local_model(graph_path, epochs=100, lr=0.01, hospital_name="Hospital"):
-    if not os.path.exists(graph_path):
-        print(f"Error: Graph file {graph_path} not found.")
-        return None
 
-    graph = torch.load(graph_path, weights_only=False).to(device)
+def compute_accuracy(model, graph):
+    model.eval()
+    with torch.no_grad():
+        out = model(graph.x, graph.edge_index)
+        preds = out.argmax(dim=1).cpu()
+        labels = graph.y.cpu()
+    return accuracy_score(labels, preds)
+
+
+def train_local_model(train_graph_path, val_graph_path, epochs=100, lr=0.01, hospital_name="Hospital"):
+
+    if not os.path.exists(train_graph_path) or not os.path.exists(val_graph_path):
+        print(f"Error: Graph files for {hospital_name} not found.")
+        return None, None, None
+
+    train_graph = torch.load(train_graph_path, weights_only=False).to(device)
+    val_graph = torch.load(val_graph_path, weights_only=False).to(device)
 
     model = GCN(
-        input_dim=graph.num_node_features,
+        input_dim=train_graph.num_node_features,
         hidden_dim=32,
         output_dim=2
     ).to(device)
@@ -28,48 +44,57 @@ def train_local_model(graph_path, epochs=100, lr=0.01, hospital_name="Hospital")
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = torch.nn.CrossEntropyLoss()
 
-    # RESOURCE MONITOR
+    train_acc_list = []
+    val_acc_list = []
+
+    # ===== RESOURCE MONITOR (FROM CODE-1) =====
     monitor = ResourceMonitor()
     monitor.start_timer()
 
-    model.train()
     for epoch in range(epochs):
+        model.train()
         optimizer.zero_grad()
-        out = model(graph.x, graph.edge_index)
-        loss = criterion(out, graph.y)
+
+        out = model(train_graph.x, train_graph.edge_index)
+        loss = criterion(out, train_graph.y)
         loss.backward()
         optimizer.step()
 
+        train_acc = compute_accuracy(model, train_graph)
+        val_acc = compute_accuracy(model, val_graph)
+
+        train_acc_list.append(train_acc)
+        val_acc_list.append(val_acc)
+
+        print(f"[{hospital_name}] Epoch {epoch+1}/{epochs} | "
+              f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f}")
+
+    # ===== RESOURCE REPORT (FROM CODE-1) =====
     training_time = monitor.stop_timer()
     memory_used = monitor.memory_usage_mb()
 
     print(f"\n[{hospital_name}] RESOURCE USAGE")
-    print(f"Training Time   : {training_time:.2f} seconds")
-    print(f"Memory Usage    : {memory_used:.2f} MB")
+    print(f"Training Time : {training_time:.2f} seconds")
+    print(f"Memory Usage  : {memory_used:.2f} MB")
 
-    return model
+    return model, train_acc_list, val_acc_list
 
-def evaluate_on_val(model, hospital_id):
-    """Evaluates the trained model on the validation CSV for that hospital."""
-    val_path = f"../data/processed/hospital_{hospital_id}/val.csv"
-    if not os.path.exists(val_path):
-        return 0.0
-    
-    df_val = pd.read_csv(val_path)
-    X_val = torch.tensor(df_val.drop('classification', axis=1).values, dtype=torch.float).to(device)
-    y_val = torch.tensor(df_val['classification'].values, dtype=torch.long).to(device)
-    
-    # Validation uses a 'dummy' edge index for node-level inference if graph not built
-    # In GCN, we need edges, but for simple val we can use self-loops or empty
-    edge_index = torch.zeros((2, 0), dtype=torch.long).to(device) 
 
-    model.eval()
-    with torch.no_grad():
-        logits = model(X_val, edge_index)
-        preds = logits.argmax(dim=1).cpu()
-        labels = y_val.cpu()
+def plot_accuracy(train_acc, val_acc, hospital_name):
+    plt.figure()
+    plt.plot(train_acc, label="Train Accuracy")
+    plt.plot(val_acc, label="Validation Accuracy")
+    plt.xlabel("Epochs")
+    plt.ylabel("Accuracy")
+    plt.title(f"{hospital_name} - Train vs Val Accuracy")
+    plt.legend()
+    plt.grid(True)
 
-    return accuracy_score(labels, preds)
+    save_path = f"../data/graph/{hospital_name}_accuracy.png"
+    plt.savefig(save_path)
+    plt.close()
+    print(f"Saved accuracy plot: {save_path}")
+
 
 def main():
     graph_dir = "../data/graph"
@@ -79,11 +104,14 @@ def main():
     hospitals = ['A', 'B', 'C']
 
     for h in hospitals:
-        graph_path = os.path.join(graph_dir, f"graph_{h}.pt")
+        train_graph_path = os.path.join(graph_dir, f"hospital_{h}_train.pt")
+        val_graph_path = os.path.join(graph_dir, f"hospital_{h}_val.pt")
+
         print(f"\n--- Training Hospital {h} ---")
 
-        model = train_local_model(
-            graph_path,
+        model, train_acc, val_acc = train_local_model(
+            train_graph_path,
+            val_graph_path,
             hospital_name=f"Hospital {h}"
         )
 
@@ -91,14 +119,14 @@ def main():
             save_path = os.path.join(model_save_dir, f"model_{h}.pth")
             torch.save(model.state_dict(), save_path)
 
-            # COMMUNICATION COST
-            from resource_monitor import ResourceMonitor
+            # ===== COMMUNICATION COST (FROM CODE-1) =====
             size_mb = ResourceMonitor.model_size_mb(save_path)
             print(f"Model Communication Cost: {size_mb:.2f} MB")
 
+            plot_accuracy(train_acc, val_acc, f"hospital_{h}")
 
-    print("\nLocal models saved successfully.")
+    print("\nLocal models trained and graphs generated successfully.")
+
 
 if __name__ == "__main__":
-    import pandas as pd # Required for evaluation function
     main()
