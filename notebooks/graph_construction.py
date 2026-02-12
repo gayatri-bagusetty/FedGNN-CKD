@@ -97,46 +97,52 @@ def visualize_graph(graph, title, save_path, max_nodes=100):
 
 
 def main():
-    # Paths according to hospital_simulation.py output
     input_base_path = "../data/processed"
     output_path = "../data/graph"
     os.makedirs(output_path, exist_ok=True)
 
-    # UPDATED: Mapping to specific simulation files
-    hospitals = {
-        "A": "hospital_A/train.csv",
-        "B": "hospital_B/train.csv",
-        "C": "hospital_C/train.csv"
-    }
+    hospitals = ["hospital_A", "hospital_B", "hospital_C"]
 
-    for h_id, relative_path in hospitals.items():
-        file_path = os.path.join(input_base_path, relative_path)
-        
-        if not os.path.exists(file_path):
-            print(f"Warning: {file_path} not found. Skipping...")
+    for hospital in hospitals:
+
+        hospital_path = os.path.join(input_base_path, hospital)
+
+        if not os.path.exists(hospital_path):
+            print(f"{hospital} folder not found. Skipping...")
             continue
 
-        print(f"--- Building Graph for Hospital {h_id} ---")
-        df = pd.read_csv(file_path)
-        
-        X = df.drop("classification", axis=1)
-        y = df["classification"]
-        
-        graph = build_graph(X, y, k=5)
-        
-        save_name = f"graph_{h_id}.pt"
-        save_path = os.path.join(output_path, save_name)
-        torch.save(graph, save_path)
-        
-        print(f"Successfully saved graph_{h_id}.pt | Nodes: {graph.num_nodes} | Features: {graph.num_node_features}")
-        img_path = os.path.join(output_path, f"graph_{h_id}.png")
-        visualize_graph(
-            graph,
-            title=f"Hospital {h_id} Graph",
-            save_path=img_path
-        )
-        print(f"Graph images are saved")
+        for split in ["train", "val", "test"]:
 
+            file_path = os.path.join(hospital_path, f"{split}.csv")
+
+            if not os.path.exists(file_path):
+                continue
+
+            print(f"{hospital} {split}.csv graph building...")
+
+            df = pd.read_csv(file_path)
+
+            X = df.drop("classification", axis=1)
+            y = df["classification"]
+
+            graph = build_graph(X, y, k=5)
+
+            save_name = f"{hospital}_{split}.pt"
+            save_path = os.path.join(output_path, save_name)
+
+            torch.save(graph, save_path)
+
+            img_path = os.path.join(output_path, f"{hospital}_{split}.png")
+
+            visualize_graph(
+                graph,
+                title=f"{hospital} {split} Graph",
+                save_path=img_path
+            )
+
+            print(f"Stored in {save_path}")
+
+    print("All hospital graphs created successfully.")
 
 if __name__ == "__main__":
     main()

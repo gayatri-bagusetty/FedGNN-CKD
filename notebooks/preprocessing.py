@@ -124,17 +124,23 @@ def preprocess_uploaded_dataset(
 # --------------------------------------------------
 def preprocess_ckd_data():
 
-    print("\n--- Loading Datasets ---")
+    print("\n----------------- Loading Datasets ---------------------")
 
-    uci_df = pd.read_csv("../data/raw/ckd_dataset.csv")
-    kaggle_df = pd.read_csv("../data/raw/kaggle_ckd.csv")
-    synthetic_df = pd.read_csv("../data/raw/synthetic_ckd.csv")
+    import pandas as pd
+    import numpy as np
+    import os
+    import joblib
+
+    uci_df = pd.read_csv("../data/raw/ckd_dataset.csv", encoding="latin1")
+    kd_df = pd.read_excel("../data/raw/kidney_disease_binary.xlsx")
+    synthetic_df = pd.read_csv("../data/raw/synthetic_ckd.csv", encoding="latin1")
 
     print(f"UCI shape: {uci_df.shape}")
-    print(f"Kaggle shape: {kaggle_df.shape}")
+    print(f"KD shape: {kd_df.shape}")
     print(f"Synthetic shape: {synthetic_df.shape}")
 
-    for df in [uci_df, kaggle_df, synthetic_df]:
+    # ---------------- Standardize Column Names ----------------
+    for df in [uci_df, kd_df, synthetic_df]:
         df.columns = (
             df.columns
             .str.strip()
@@ -142,19 +148,24 @@ def preprocess_ckd_data():
             .str.replace(" ", "_")
         )
 
+    # ---------------- Rename Target ----------------
     uci_df.rename(columns={"class": "classification"}, inplace=True)
+    kd_df.rename(columns={"target": "classification"}, inplace=True)
     synthetic_df.rename(columns={"class": "classification"}, inplace=True, errors="ignore")
 
-    if "id" in kaggle_df.columns:
-        kaggle_df.drop(columns=["id"], inplace=True)
+    # Drop ID if exists
+    if "id" in kd_df.columns:
+        kd_df = kd_df.drop(columns=["id"])
 
-    kaggle_df.rename(columns={"wc": "wbcc", "rc": "rbcc"}, inplace=True)
+    # Standardize column names
+    kd_df.rename(columns={"wc": "wbcc", "rc": "rbcc"}, inplace=True)
 
     FEATURES = [
         'age','bp','sg','al','su','rbc','pc','pcc','ba','bgr','bu',
         'sc','sod','pot','hemo','pcv','wbcc','rbcc','htn','dm','cad',
         'appet','pe','ane'
     ]
+
     TARGET = "classification"
 
     num_cols = [
@@ -168,34 +179,29 @@ def preprocess_ckd_data():
     ]
 
     binary_map = {
+        'ckd': 0, 'notckd': 1,
         'yes': 1, 'no': 0,
-        'ckd': 1, 'notckd': 0,
-        'poor': 1, 'good': 0,
         'present': 1, 'notpresent': 0,
-        'abnormal': 1, 'normal': 0
+        'normal': 0, 'abnormal': 1,
+        'poor': 0, 'good': 1
     }
 
-    for df in [uci_df, kaggle_df, synthetic_df]:
+    # ---------------- Cleaning & Encoding ----------------
+    for df in [uci_df, kd_df, synthetic_df]:
 
+        # Replace missing markers
         df.replace(['?', '\t?'], np.nan, inplace=True)
 
+        # Numerical columns
         for col in num_cols:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-            df[col].fillna(df[col].median(), inplace=True)
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+                df[col] = df[col].fillna(df[col].median())
 
-        df[TARGET] = (
-            df[TARGET]
-            .astype(str)
-            .str.strip()
-            .str.lower()
-            .map(binary_map)
-            .fillna(0)
-            .astype(int)
-        )
-
-        for col in cat_cols:
-            df[col] = (
-                df[col]
+        # Target encoding
+        if TARGET in df.columns:
+            df[TARGET] = (
+                df[TARGET]
                 .astype(str)
                 .str.strip()
                 .str.lower()
@@ -204,17 +210,32 @@ def preprocess_ckd_data():
                 .astype(int)
             )
 
-    print("\n--- Normalizing Features ---")
+        # Categorical encoding
+        for col in cat_cols:
+            if col in df.columns:
+                df[col] = (
+                    df[col]
+                    .astype(str)
+                    .str.strip()
+                    .str.lower()
+                    .map(binary_map)
+                    .fillna(0)
+                    .astype(int)
+                )
 
-    scaler = StandardScaler()
-    X_uci = scaler.fit_transform(uci_df[FEATURES])
-
+    # ---------------- Save Cleaned Files ----------------
     os.makedirs("../data/processed/", exist_ok=True)
-    joblib.dump(scaler, "../data/processed/scaler.pkl")
+
+    uci_df.to_csv("../data/processed/uci_cleaned.csv", index=False)
+    kd_df.to_csv("../data/processed/kd_cleaned.csv", index=False)
+    synthetic_df.to_csv("../data/processed/synthetic_cleaned.csv", index=False)
+
+    # Save feature list
+    print("\n Feature_order is saved.")
     joblib.dump(FEATURES, "../data/processed/feature_order.pkl")
 
-    print("\n--- Preprocessing Completed Successfully ---")
-
+    print("\n✔ Cleaned datasets saved to data/processed/")
+    print("---------------- Preprocessing Completed Successfully --------------------")
 
 if __name__ == "__main__":
     preprocess_ckd_data()

@@ -26,8 +26,8 @@ def main():
     # 1. Load Data from processed folder
     print("Loading processed hospital datasets...")
     try:
-        uci_clean = pd.read_csv("../data/processed/uci_clean.csv")
-        kaggle_clean = pd.read_csv("../data/processed/kaggle_clean.csv")
+        uci_clean = pd.read_csv("../data/processed/ckd_dataset.csv")
+        kd_clean = pd.read_csv("../data/processed/kidney_disease_binary_clean.csv")
         synthetic_clean = pd.read_csv("../data/processed/synthetic_clean.csv")
     except FileNotFoundError as e:
         print(f"Error: Could not find processed files. Run preprocessing.py first. {e}")
@@ -38,7 +38,7 @@ def main():
     hospital_A = uci_clean.copy()
 
     # Hospital B - Kaggle Data
-    hospital_B = kaggle_clean.copy()
+    hospital_B = kd_clean.copy()
 
     # Hospital C - Synthetic Data
     hospital_C = synthetic_clean.copy()
