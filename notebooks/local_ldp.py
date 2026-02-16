@@ -56,33 +56,39 @@ def apply_ldp(model, epsilon, alpha=0.3):
 
     return noisy_model
 
-def select_best_epsilon(clean_model, graph, epsilons, alpha_score=0.8, hospital_name="Hospital"):
+def select_best_epsilon(clean_model, graph, epsilons, delta=0.02, hospital_name="Hospital"):
     clean_acc = evaluate(clean_model, graph)
     print(f"\n--- {hospital_name} LDP Optimization ---")
     print(f"Original Local Accuracy: {clean_acc:.4f}")
 
-    best_score = -float("inf")
+    threshold = clean_acc - delta
+    print(f"Minimum Acceptable Accuracy: {threshold:.4f}")
+
     best_eps = None
     best_model = None
     noisy_accuracies = []
-    eps_max = max(epsilons)
 
-    for eps in epsilons:
+    for eps in sorted(epsilons):
         noisy_model = apply_ldp(clean_model, eps)
         noisy_acc = evaluate(noisy_model, graph)
-
-        score = alpha_score * noisy_acc - (1 - alpha_score) * (eps / eps_max)
         noisy_accuracies.append(noisy_acc)
 
-        print(f"ε={eps:<3} | Protected Acc={noisy_acc:.4f} | Score={score:.4f}")
+        print(f"ε={eps:<3} | Protected Acc={noisy_acc:.4f}")
 
-        if score > best_score:
-            best_score = score
+        if noisy_acc >= threshold and best_eps is None:
             best_eps = eps
             best_model = noisy_model
 
+    # Fallback (if none satisfy threshold)
+    if best_eps is None:
+        print("No epsilon satisfies constraint. Selecting best accuracy.")
+        best_idx = np.argmax(noisy_accuracies)
+        best_eps = epsilons[best_idx]
+        best_model = apply_ldp(clean_model, best_eps)
+
     print(f"Selected optimal ε={best_eps} for {hospital_name}")
     return best_model, best_eps, noisy_accuracies, clean_acc
+
 
 def plot_tradeoff(epsilons, accuracies, clean_acc, hospital_label):
     plt.figure(figsize=(8, 5))

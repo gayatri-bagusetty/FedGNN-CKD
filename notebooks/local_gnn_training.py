@@ -6,9 +6,14 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score
 
-# USE SAME MONITOR STYLE AS CODE-1
-# from resource_monitor import ResourceMonitor
-from notebooks.resource_monitor import ResourceMonitor
+# Automatic import handling for ResourceMonitor
+try:
+    from notebooks.resource_monitor import ResourceMonitor
+except (ImportError, ModuleNotFoundError):
+    try:
+        from resource_monitor import ResourceMonitor
+    except (ImportError, ModuleNotFoundError):
+        print("Warning: resource_monitor.py not found in expected paths.")
 
 # Ensure pathing for GCN model import
 sys.path.append(os.path.abspath(".."))
@@ -26,7 +31,7 @@ def compute_accuracy(model, graph):
     return accuracy_score(labels, preds)
 
 
-def train_local_model(train_graph_path, val_graph_path, epochs=100, lr=0.01, hospital_name="Hospital"):
+def train_local_model(train_graph_path, val_graph_path, epochs=60, lr=0.01, hospital_name="Hospital"):
 
     if not os.path.exists(train_graph_path) or not os.path.exists(val_graph_path):
         print(f"Error: Graph files for {hospital_name} not found.")
@@ -42,12 +47,23 @@ def train_local_model(train_graph_path, val_graph_path, epochs=100, lr=0.01, hos
     ).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = torch.nn.CrossEntropyLoss()
+
+    # CLASS IMBALANCE 
+    class_counts = torch.bincount(train_graph.y)
+    class_counts = class_counts.float()
+
+    # Avoid division by zero
+    class_counts[class_counts == 0] = 1.0
+
+    class_weights = 1.0 / class_counts
+    class_weights = class_weights / class_weights.sum()
+
+    criterion = torch.nn.CrossEntropyLoss(weight=class_weights.to(device))
 
     train_acc_list = []
     val_acc_list = []
 
-    # ===== RESOURCE MONITOR (FROM CODE-1) =====
+    # ===== RESOURCE MONITOR =====
     monitor = ResourceMonitor()
     monitor.start_timer()
 
@@ -69,7 +85,7 @@ def train_local_model(train_graph_path, val_graph_path, epochs=100, lr=0.01, hos
         print(f"[{hospital_name}] Epoch {epoch+1}/{epochs} | "
               f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f}")
 
-    # ===== RESOURCE REPORT (FROM CODE-1) =====
+    # ===== RESOURCE REPORT =====
     training_time = monitor.stop_timer()
     memory_used = monitor.memory_usage_mb()
 
@@ -119,7 +135,6 @@ def main():
             save_path = os.path.join(model_save_dir, f"model_{h}.pth")
             torch.save(model.state_dict(), save_path)
 
-            # ===== COMMUNICATION COST (FROM CODE-1) =====
             size_mb = ResourceMonitor.model_size_mb(save_path)
             print(f"Model Communication Cost: {size_mb:.2f} MB")
 
