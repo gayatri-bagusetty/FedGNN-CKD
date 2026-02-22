@@ -5,6 +5,17 @@ import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score
+import random
+import numpy as np
+import torch
+
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 # Automatic import handling for ResourceMonitor
 try:
@@ -40,6 +51,7 @@ def train_local_model(train_graph_path, val_graph_path, epochs=60, lr=0.01, hosp
     train_graph = torch.load(train_graph_path, weights_only=False).to(device)
     val_graph = torch.load(val_graph_path, weights_only=False).to(device)
 
+    torch.manual_seed(42)
     model = GCN(
         input_dim=train_graph.num_node_features,
         hidden_dim=32,

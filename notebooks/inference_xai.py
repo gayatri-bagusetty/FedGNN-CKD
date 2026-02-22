@@ -24,45 +24,69 @@ class WrappedModel(torch.nn.Module):
 
     def forward(self, x, edge_index):
         out = self.model(x, edge_index)
-        return torch.softmax(out, dim=1)[:, 1]  # CKD probability
+        probs = torch.softmax(out, dim=1)
+        return probs[:, 1]  # CKD probability
 
 
 # --------------------------------------------------
 # 3. CLINICAL EXPLANATION GENERATOR
 # --------------------------------------------------
 def generate_clinical_description(prediction, prob, feat_imp):
-    # 1. Filter out 'AGE' from drivers to keep focus on physiological markers
-    filtered_features = [f for f in feat_imp if f[0].upper() != "AGE"]
-    
-    # Get top 3 physiological drivers
-    top_3_names = [f[0].upper() for f in filtered_features[:3]]
-    primary_factor = top_3_names[0] if top_3_names else "RENAL BIOMARKERS"
 
-    # 2. Build bulleted explanation based on key features
+    filtered_features = [f for f in feat_imp if f[0].upper() != "AGE"]
+    top_features = filtered_features[:4]
+    top_names = [f[0].upper() for f in top_features]
+
+    confidence = f"{prob*100:.1f}%"
+
     if prediction == "CKD":
-        reasoning = (
-            f"The Graph Neural Network (GNN) identifies a high risk of CKD based on the following findings:\n\n"
-            f"* **{primary_factor} Correlation:** Significant deviation from normal physiological baseline detected.\n"
-            f"* **Abnormal Connectivity:** Disrupted interactions between {', '.join(top_3_names[1:])} and other key nodes.\n"
-            f"* **Pattern Matching:** Patient embedding aligns with renal impairment clusters identified in federated training."
+        explanation_text = (
+            f"Clinical Decision Support Summary:\n\n"
+            f"The model indicates a HIGH likelihood of Chronic Kidney Disease "
+            f"(confidence: {confidence}).\n"
+            f"Key contributing clinical parameters include:\n"
+            f"- {top_names[0]} (primary driver)\n"
+            f"- {top_names[1] if len(top_names)>1 else ''}\n"
+            f"- {top_names[2] if len(top_names)>2 else ''}\n"
+            f"These parameters are commonly associated with impaired renal function, "
+            f"electrolyte imbalance, or abnormal filtration markers. "
+            f"Correlation patterns resemble profiles observed in CKD cohorts."
+        )
+
+        recommendation = (
+            "Suggested clinical consideration: Correlate with serum creatinine, "
+            "eGFR, and urine analysis findings. Consider nephrology referral if indicated."
         )
 
     else:
-        reasoning = (
-            f"The patient demonstrates a stable renal profile with no significant disease markers:\n\n"
-            f"* **{primary_factor} Stability:** Feature levels are within healthy clinical bounds.\n"
-            f"* **Balanced Graph:** Learned representations for {', '.join(top_3_names[1:])} show homeostatic behavior.\n"
-            f"* **Cluster Alignment:** Data matches healthy clinical cohorts with high confidence."
+        explanation_text = (
+            f"Clinical Decision Support Summary:\n"
+            f"The model indicates LOW likelihood of Chronic Kidney Disease "
+            f"(confidence: {confidence}).\n\n"
+            f"Renal-associated parameters appear within acceptable clinical range. "
+            f"No strong pathological interaction patterns detected.\n"
+            f"Primary monitored biomarkers:\n"
+            f"- {top_names[0]}\n"
+            f"- {top_names[1] if len(top_names)>1 else ''}\n"
+            f"- {top_names[2] if len(top_names)>2 else ''}"
+        )
+
+        recommendation = (
+            "Suggested clinical consideration: Continue routine monitoring "
+            "based on patient risk profile."
         )
 
     return {
-        "explanation": reasoning,
-        "primary_drivers": ", ".join(top_3_names),
+        "prediction": prediction,
+        "confidence": confidence,
+        "primary_biomarkers": ", ".join(top_names),
+        "clinical_explanation": explanation_text,
+        "recommendation": recommendation
     }
 
 
 # --------------------------------------------------
-# 4. STANDALONE TEST INFERENCE (OPTIONAL)
+# 4. STANDALONE TEST INFERENCE
 # --------------------------------------------------
 def run_inference_xai():
 
@@ -77,31 +101,38 @@ def run_inference_xai():
     # --------------------------------------------------
     model = GCN(input_dim=24, hidden_dim=32, output_dim=2)
 
-    model_path = os.path.join(
-        BASE_DIR, "data", "models", "global_model.pth"
-    )
+    model_path = os.path.join(BASE_DIR, "data", "models", "global_model.pth")
 
     if not os.path.exists(model_path):
         print("global_model.pth not found.")
         return
 
-    model.load_state_dict(
-        torch.load(model_path, map_location="cpu")
-    )
-
+    model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
 
     # --------------------------------------------------
     # Example patient vector (already scaled)
     # --------------------------------------------------
-    test_patient = torch.tensor(
+    ckd_patient = torch.tensor(
         [[
-            0.3, 0.4, 1.025, 0, 0, 1, 1, 0, 0,
-            0.5, 0.2, 0.1, 0.8, 0.4, 0.9, 0.85,
-            0.2, 0.75, 0, 0, 0, 1, 0, 0
+            0.70, 0.75, 1.005, 0.8, 0.6, 0, 0, 1, 1,
+            0.80, 0.85, 0.90, 0.30, 0.80, 0.25, 0.20,
+            0.85, 0.30, 1, 1, 1, 0, 1, 1
         ]],
         dtype=torch.float32
     )
+    
+    non_ckd_patient = torch.tensor(
+        [[
+            0.30, 0.35, 1.020, 0.0, 0.0, 1, 1, 0, 0,
+            0.25, 0.20, 0.10, 0.65, 0.35, 0.85, 0.90,
+            0.20, 0.85, 0, 0, 0, 1, 0, 0
+        ]],
+        dtype=torch.float32
+    )
+    
+    test_patient = ckd_patient
+    # test_patient = non_ckd_patient
 
     edge_index = torch.tensor([[0], [0]], dtype=torch.long)
 
@@ -127,13 +158,16 @@ def run_inference_xai():
     explanation = explainer(test_patient, edge_index)
 
     # --------------------------------------------------
-    # Prediction
+    # Prediction + confidence
     # --------------------------------------------------
     with torch.no_grad():
         logits = model(test_patient, edge_index)
-        prob = torch.softmax(logits, dim=1)[0][1].item()
+        probs = torch.softmax(logits, dim=1)
+        confidence = probs.max(dim=1)[0].item()
+        pred_class = probs.argmax(dim=1).item()
 
-    prediction = "CKD" if prob >= 0.50 else "Non-CKD"
+    prediction = "CKD" if pred_class == 1 else "Non-CKD"
+    prob = confidence
 
     # --------------------------------------------------
     # Feature importance
@@ -153,13 +187,12 @@ def run_inference_xai():
     # --------------------------------------------------
     # Explanation text
     # --------------------------------------------------
-    report = generate_clinical_description(
-        prediction, prob, feat_imp
-    )
+    report = generate_clinical_description(prediction, prob, feat_imp)
 
     print("\nPrediction:", prediction)
     print("Confidence:", f"{prob:.2%}")
     print("Explanation:", report)
+    return report
 
 
 if __name__ == "__main__":

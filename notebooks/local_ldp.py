@@ -46,6 +46,7 @@ def apply_ldp(model, epsilon, alpha=0.3):
             continue
 
         noise_std = alpha / epsilon
+        torch.manual_seed(42)
         noise = torch.normal(
             mean=0.0,
             std=noise_std,

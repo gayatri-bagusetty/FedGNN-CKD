@@ -12,7 +12,7 @@ sys.path.append(BASE_DIR)
 from data.models.gcn_model import GCN
 from notebooks.preprocessing import preprocess_single_patient
 from notebooks.graph_construction import build_single_node_graph
-from notebooks.inference_xai import generate_clinical_description
+from notebooks.inference_xai import generate_clinical_description_db
 
 
 # ------------------------------------------------------
@@ -148,7 +148,7 @@ class ClinicalInferenceEngine:
         # --------------------------------------------------
         # 6. Clinical explanation text
         # --------------------------------------------------
-        report = generate_clinical_description(
+        report = generate_clinical_description_db(
             prediction,
             prob,
             feat_imp

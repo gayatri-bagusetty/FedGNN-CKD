@@ -77,9 +77,10 @@ def analysis_tool(engine):
 
                     with res_col:
                         st.markdown("### Diagnosis")
-                        border_color = "#D81939" if results["probability"] >= 0.50 else "#18B78A"
+                        border_color = "#D81939" if results["prediction"] == "CKD" else "#18B78A"
+                        shadow_color = "rgba(216,25,57,0.4)" if results["prediction"] == "CKD" else "rgba(24,183,138,0.4)"
                         st.markdown(f"""
-                            <div style="box-shadow: 0 4px 10px rgba(0,0,0,0.1); padding: 60px; border-radius: 30px; border-block: 10px solid #5DBF9B; background-color: white;">
+                            <div style="box-shadow: 0 6px 18px {shadow_color}; padding: 60px; border-radius: 30px; border-block: 10px solid {border_color}; background-color: white;">
                             <p style="margin:0; font-size: 14px; color: #666;">Current Prediction</p>
                             <h2 style="margin:0; color: {border_color};">{results['prediction']}</h2>
                             <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
@@ -91,8 +92,8 @@ def analysis_tool(engine):
                         save_patient_data(raw_patient_data, results["prediction"])
                         st.markdown(f"""
                             <div style="
-                                background-color: #d4edda;  /* light green */
-                                color: black;             /* dark green text */
+                                background-color: #d4edda;  
+                                color: black;            
                                 padding: 15px 20px;
                                 border-radius: 28px;
                                 border: 1px solid #c3e6cb;
@@ -111,20 +112,20 @@ def analysis_tool(engine):
                         # --- THE SHADOW BOX ---
                         # result['report'] is now the dictionary from inference_xai.py
                         st.markdown(f"""
-                            <div style="box-shadow: 0 4px 12px rgba(0,0,0,0.1); 
+                            <div style="box-shadow: 0 4px 12px {shadow_color}; 
                                         padding: 25px; 
                                         border-radius: 30px; 
-                                        border-block: 10px solid #5DBF9B; 
+                                        border-block: 10px solid {border_color}; 
                                         background-color: white; 
                                         margin-bottom: 25px;">
                                 <h4 style="margin-top:0; color: Black;">CLINICAL ANALYSIS REPORT</h4>
                                 <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
                                 <p style="font-size: 0.95em; color: #444; line-height: 1.6;">
                                     <strong>EXPLANATION:</strong><br>
-                                    {results['report']['explanation']}
+                                    {results['report']['clinical_explanation']}
                                 </p>
                                 <p style="font-size: 0.95em; color: #444;">
-                                    <strong>PRIMARY DRIVERS:</strong> {results['report']['primary_drivers']}
+                                    <strong>PRIMARY DRIVERS:</strong> {results['report']['primary_biomarkers']}
                                 </p>
                             </div>
                         """, unsafe_allow_html=True)
