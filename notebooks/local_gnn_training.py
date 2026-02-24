@@ -9,6 +9,10 @@ import random
 import numpy as np
 import torch
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, PROJECT_ROOT)
+from source.plot_resource_efficiency import plot_resource_efficiency
+
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
@@ -105,7 +109,7 @@ def train_local_model(train_graph_path, val_graph_path, epochs=60, lr=0.01, hosp
     print(f"Training Time : {training_time:.2f} seconds")
     print(f"Memory Usage  : {memory_used:.2f} MB")
 
-    return model, train_acc_list, val_acc_list
+    return model, train_acc_list, val_acc_list, training_time, memory_used
 
 
 def plot_accuracy(train_acc, val_acc, hospital_name):
@@ -130,6 +134,7 @@ def main():
     os.makedirs(model_save_dir, exist_ok=True)
 
     hospitals = ['A', 'B', 'C']
+    resource_metrics = {}
 
     for h in hospitals:
         train_graph_path = os.path.join(graph_dir, f"hospital_{h}_train.pt")
@@ -137,7 +142,7 @@ def main():
 
         print(f"\n--- Training Hospital {h} ---")
 
-        model, train_acc, val_acc = train_local_model(
+        model, train_acc, val_acc, training_time, memory_used = train_local_model(
             train_graph_path,
             val_graph_path,
             hospital_name=f"Hospital {h}"
@@ -149,8 +154,13 @@ def main():
 
             size_mb = ResourceMonitor.model_size_mb(save_path)
             print(f"Model Communication Cost: {size_mb:.2f} MB")
+            resource_metrics[f"Hospital {h}"] = {
+                "time": training_time,
+                "memory": memory_used
+            }
 
             plot_accuracy(train_acc, val_acc, f"hospital_{h}")
+    plot_resource_efficiency(resource_metrics)
 
     print("\nLocal models trained and graphs generated successfully.")
 

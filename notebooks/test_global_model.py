@@ -1,8 +1,13 @@
 import torch
 import os
 import sys
+import json
 import numpy as np
 from sklearn.metrics import accuracy_score, classification_report
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, PROJECT_ROOT)
+from source.plot_global_results import plot_global_model_performance, plot_federated_fairness_summary
 
 # Project path to import GCN model architecture
 sys.path.append(os.path.abspath(".."))
@@ -103,6 +108,28 @@ def main():
         print(f"Macro Federated Accuracy (Fairness):     {macro_acc:.4f}")
         print(f"Micro Federated Accuracy (Deployment):   {micro_acc:.4f}")
         print("="*40)
+
+        # ===== Save results for plotting =====
+        results = {
+            "hospitals": hospital_results,
+            "macro_accuracy": macro_acc,
+            "micro_accuracy": micro_acc
+        }
+
+        os.makedirs("../data/results", exist_ok=True)
+        save_path = "../data/results/global_test_results.json"
+
+        with open(save_path, "w") as f:
+            json.dump(results, f, indent=4)
+
+        print(f"\n[Saved] Global test results written to {save_path}")
+    plot_global_model_performance()
+    plot_federated_fairness_summary()
+
+    with open(save_path, "w") as f:
+        json.dump(results, f, indent=4)
+
+    print(f"\n[Saved] Global test results written to {save_path}")
 
 
 if __name__ == "__main__":

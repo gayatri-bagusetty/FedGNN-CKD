@@ -1,7 +1,11 @@
 import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
+import sys
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, PROJECT_ROOT)
+from source.plot_hospital_distribution import plot_train_distribution
 
 def create_directories(base_path, hospitals):
     """Ensures the directory structure exists for saving CSVs."""
@@ -80,6 +84,15 @@ def main():
     show_dist(A_train, "Hospital-A Train")
     show_dist(B_train, "Hospital-B Train")
     show_dist(C_train, "Hospital-C Train")
+    
+        # ---- Collect train distributions ----
+    dist_dict = {
+        "Hospital A": A_train["classification"].value_counts(normalize=True).to_dict(),
+        "Hospital B": B_train["classification"].value_counts(normalize=True).to_dict(),
+        "Hospital C": C_train["classification"].value_counts(normalize=True).to_dict(),
+    }
+
+    plot_train_distribution(dist_dict)
 
 
 if __name__ == "__main__":

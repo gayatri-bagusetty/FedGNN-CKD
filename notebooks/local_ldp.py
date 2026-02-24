@@ -97,7 +97,7 @@ def plot_tradeoff(epsilons, accuracies, clean_acc, hospital_label):
     plt.axhline(y=clean_acc, linestyle="--", label="Original Accuracy")
     plt.xlabel("Privacy Budget (ε)")
     plt.ylabel("Accuracy")
-    plt.title(f"Privacy–Utility Tradeoff: {hospital_label}")
+    plt.title(f"Privacy–Utility Trade-off under LDP {hospital_label}")
     plt.legend()
     plt.grid(True, linestyle="--", alpha=0.6)
 
