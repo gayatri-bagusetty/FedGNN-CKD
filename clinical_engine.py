@@ -25,7 +25,7 @@ class WrappedModel(torch.nn.Module):
 
     def forward(self, x, edge_index):
         out = self.model(x, edge_index)
-        return torch.softmax(out, dim=1)[:, 1]
+        return torch.softmax(out, dim=1)[:, 0] 
 
 
 # ------------------------------------------------------
@@ -88,7 +88,7 @@ class ClinicalInferenceEngine:
             x_scaled,
             dtype=torch.float32
         ).to(self.device)
-
+        
         # --------------------------------------------------
         # 2. Graph construction
         # --------------------------------------------------
@@ -98,34 +98,43 @@ class ClinicalInferenceEngine:
         # --------------------------------------------------
         # 3. Local personalization (fine-tuning)
         # --------------------------------------------------
-        self.model.train()
+        # self.model.train()
 
-        optimizer = torch.optim.Adam(
-            self.model.parameters(),
-            lr=0.0005
-        )
+        # optimizer = torch.optim.Adam(
+        #     self.model.parameters(),
+        #     lr=0.0005
+        # )
 
-        # lightweight personalization
-        for _ in range(5):
-            optimizer.zero_grad()
-            out = self.model(x, edge_index)
-            loss = F.cross_entropy(
-                out,
-                torch.tensor([1]).to(self.device)
-            )
-            loss.backward()
-            optimizer.step()
+        # # lightweight personalization
+        # for _ in range(5):
+        #     optimizer.zero_grad()
+        #     out = self.model(x, edge_index)
+        #     loss = F.cross_entropy(
+        #         out,
+        #         torch.tensor([1]).to(self.device)
+        #     )
+        #     loss.backward()
+        #     optimizer.step()
 
-        self.model.eval()
+        # self.model.eval()
 
         # --------------------------------------------------
         # 4. Prediction
         # --------------------------------------------------
         with torch.no_grad():
             logits = self.model(x, edge_index)
-            prob = torch.softmax(logits, dim=1)[0][1].item()
 
-        prediction = "CKD" if prob >= 0.50 else "Non-CKD"
+            probs = torch.softmax(logits, dim=1)
+
+            print("====== DEBUG ======")
+            print("Logits:", logits)
+            print("Probabilities:", probs)
+            print("Class 0 Prob:", probs[0][0].item())
+            print("Class 1 Prob:", probs[0][1].item())
+            print("===================")
+
+            prob = probs[0][0].item()   # CKD probability
+            prediction = "CKD" if prob >= 0.50 else "Non-CKD"
 
         # --------------------------------------------------
         # 5. Explainability (XAI)
@@ -161,5 +170,8 @@ class ClinicalInferenceEngine:
             "prediction": prediction,
             "probability": prob,
             "top_features": feat_imp[:5],
-            "report": report
+            "clinical_explanation": report["clinical_explanation"],
+            "recommendation": report["recommendation"],
+            "primary_biomarkers": report["primary_biomarkers"],
+            "chart_values": report["chart_values"]
         }

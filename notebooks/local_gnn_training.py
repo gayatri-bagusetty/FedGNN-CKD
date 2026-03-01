@@ -46,31 +46,32 @@ def compute_accuracy(model, graph):
     return accuracy_score(labels, preds)
 
 
-def train_local_model(train_graph_path, val_graph_path, epochs=60, lr=0.01, hospital_name="Hospital"):
+def train_local_model(train_graph_path, val_graph_path,
+                      epochs=60, lr=0.01, hospital_name="Hospital"):
 
     if not os.path.exists(train_graph_path) or not os.path.exists(val_graph_path):
         print(f"Error: Graph files for {hospital_name} not found.")
-        return None, None, None
+        return None, None, None, None, None
 
     train_graph = torch.load(train_graph_path, weights_only=False).to(device)
     val_graph = torch.load(val_graph_path, weights_only=False).to(device)
 
-    torch.manual_seed(42)
     model = GCN(
         input_dim=train_graph.num_node_features,
         hidden_dim=32,
         output_dim=2
     ).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    # L2 regularization (weight decay)
+    optimizer = torch.optim.Adam(
+        model.parameters(),
+        lr=lr,
+        weight_decay=1e-4
+    )
 
-    # CLASS IMBALANCE 
-    class_counts = torch.bincount(train_graph.y)
-    class_counts = class_counts.float()
-
-    # Avoid division by zero
+    # ----- Class imbalance handling -----
+    class_counts = torch.bincount(train_graph.y).float()
     class_counts[class_counts == 0] = 1.0
-
     class_weights = 1.0 / class_counts
     class_weights = class_weights / class_weights.sum()
 
@@ -78,6 +79,12 @@ def train_local_model(train_graph_path, val_graph_path, epochs=60, lr=0.01, hosp
 
     train_acc_list = []
     val_acc_list = []
+
+    # ===== EARLY STOPPING SETUP =====
+    best_val_loss = float("inf")
+    best_model_state = None
+    patience = 5
+    patience_counter = 0
 
     # ===== RESOURCE MONITOR =====
     monitor = ResourceMonitor()
@@ -88,9 +95,15 @@ def train_local_model(train_graph_path, val_graph_path, epochs=60, lr=0.01, hosp
         optimizer.zero_grad()
 
         out = model(train_graph.x, train_graph.edge_index)
-        loss = criterion(out, train_graph.y)
-        loss.backward()
+        train_loss = criterion(out, train_graph.y)
+        train_loss.backward()
         optimizer.step()
+
+        # ----- Validation loss -----
+        model.eval()
+        with torch.no_grad():
+            val_out = model(val_graph.x, val_graph.edge_index)
+            val_loss = criterion(val_out, val_graph.y)
 
         train_acc = compute_accuracy(model, train_graph)
         val_acc = compute_accuracy(model, val_graph)
@@ -101,6 +114,22 @@ def train_local_model(train_graph_path, val_graph_path, epochs=60, lr=0.01, hosp
         print(f"[{hospital_name}] Epoch {epoch+1}/{epochs} | "
               f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f}")
 
+        # ===== EARLY STOPPING LOGIC =====
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_model_state = model.state_dict()
+            patience_counter = 0
+        else:
+            patience_counter += 1
+
+        if patience_counter >= patience:
+            print(f"[{hospital_name}] Early stopping triggered at epoch {epoch+1}")
+            break
+
+    # ===== RESTORE BEST MODEL =====
+    if best_model_state is not None:
+        model.load_state_dict(best_model_state)
+
     # ===== RESOURCE REPORT =====
     training_time = monitor.stop_timer()
     memory_used = monitor.memory_usage_mb()
@@ -110,7 +139,6 @@ def train_local_model(train_graph_path, val_graph_path, epochs=60, lr=0.01, hosp
     print(f"Memory Usage  : {memory_used:.2f} MB")
 
     return model, train_acc_list, val_acc_list, training_time, memory_used
-
 
 def plot_accuracy(train_acc, val_acc, hospital_name):
     plt.figure()

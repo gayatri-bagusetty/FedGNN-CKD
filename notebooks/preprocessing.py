@@ -9,47 +9,48 @@ from collections import Counter
 # SINGLE PATIENT PREPROCESSING (FOR DASHBOARD / API)
 # --------------------------------------------------
 def preprocess_single_patient(raw_dict, scaler_path="../data/processed/scaler.pkl"):
+    import pandas as pd
+    import numpy as np
+    import joblib
 
     scaler = joblib.load(scaler_path)
     feature_order = joblib.load("../data/processed/feature_order.pkl")
 
+    CATEGORY_MAP = {
+        "rbc": {"normal": 0, "abnormal": 1},
+        "pc": {"normal": 0, "abnormal": 1},
+        "pcc": {"notpresent": 0, "present": 1},
+        "ba": {"notpresent": 0, "present": 1},
+        "htn": {"no": 0, "yes": 1},
+        "dm": {"no": 0, "yes": 1},
+        "cad": {"no": 0, "yes": 1},
+        "appet": {"good": 0, "poor": 1},
+        "pe": {"no": 0, "yes": 1},
+        "ane": {"no": 0, "yes": 1},
+    }
+
     df = pd.DataFrame([raw_dict])
 
-    # Ensure all expected features exist
     for col in feature_order:
         if col not in df.columns:
-            df[col] = np.nan
+            raise ValueError(f"Missing required feature: {col}")
 
     df = df[feature_order]
 
-    binary_map = {
-        'yes': 1, 'no': 0,
-        'ckd': 1, 'notckd': 0,
-        'poor': 1, 'good': 0,
-        'present': 1, 'notpresent': 0,
-        'abnormal': 1, 'normal': 0,
-        '\tno': 0, '\tyes': 1,
-        ' yes': 1, ' \tno': 0
-    }
-
-    # Encode categorical
     for col in df.columns:
-        if df[col].dtype == object:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.strip()
-                .str.lower()
-                .map(binary_map)
-                .fillna(df[col])
-            )
+        if col in CATEGORY_MAP:
+            val = str(df[col].iloc[0]).strip().lower()
+            if val not in CATEGORY_MAP[col]:
+                raise ValueError(f"Invalid value '{val}' for feature '{col}'")
+            df[col] = CATEGORY_MAP[col][val]
+        else:
+            df[col] = pd.to_numeric(df[col], errors="raise")
 
-    df = df.apply(pd.to_numeric, errors="coerce")
+    x_scaled = scaler.transform(df.values)
 
-    # Do NOT median-fill single patient
-    df = df.fillna(0)
+    assert x_scaled.shape == (1, len(feature_order))
+    assert np.all(np.isfinite(x_scaled))
 
-    x_scaled = scaler.transform(df)
     return x_scaled
 
 

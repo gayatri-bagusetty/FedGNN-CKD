@@ -32,7 +32,6 @@ def run_pipeline():
 
     # STEP 8: Explainable AI & Inference Test
     run("inference_xai.py")
-    
     print("\n===== PIPELINE COMPLETED SUCCESSFULLY =====\n")
 
 if __name__ == "__main__":

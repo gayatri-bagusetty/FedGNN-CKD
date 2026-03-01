@@ -64,7 +64,7 @@ def analysis_tool(engine):
                     raw_patient_data = {
                         'age': age, 'bp': bp, 'sg': sg, 'al': al, 'su': su, 'rbc': rbc, 
                         'pc': pc, 'pcc': pcc, 'ba': ba, 'bgr': bgr, 'bu': bu, 'sc': sc, 
-                        'sod': sod, 'pot': pot, 'hemo': hemo, 'pcv': pcv, 'wbcc': wbcc, 
+                        'sod': sod, 'pot': pot, 'hemo': hemo, 'pcv': pcv, 'wbcc': wbcc,
                         'rbcc': rbcc, 'htn': htn, 'dm': dm, 'cad': cad, 'appet': appet, 
                         'pe': pe, 'ane': ane
                     }
@@ -90,46 +90,62 @@ def analysis_tool(engine):
                         """, unsafe_allow_html=True)
                         st.markdown(f"       ")
                         save_patient_data(raw_patient_data, results["prediction"])
-                        st.markdown(f"""
-                            <div style="
-                                background-color: #d4edda;  
-                                color: black;            
-                                padding: 15px 20px;
-                                border-radius: 28px;
-                                border: 1px solid #c3e6cb;
-                                font-weight: 500;
-                                font-size: 16px;
-                                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                            ">
-                            Patient record saved to database successfully!
-                            </div>
-                        """, unsafe_allow_html=True)
-
-
+                    
                     with xai_col:
-                        st.markdown("### EXPLANATION")
+                        st.markdown("### Explanation")
 
-                        # --- THE SHADOW BOX ---
-                        # result['report'] is now the dictionary from inference_xai.py
+                        # --- THE PIE CHART (Top Section) ---
+                        if 'chart_values' in results:
+                            labels = [
+                                "Specific Gravity",
+                                "Albumin",
+                                "Sugar",
+                                "Serum Creatinine",
+                                "Hemoglobin"
+                            ]
+                            values = results['chart_values']
+                            fig = px.pie(
+                                names=labels,
+                                values=values,
+                                hole=0.5, # Donut style
+                                color_discrete_sequence=px.colors.sequential.Reds_r if results['prediction'] == "CKD" else px.colors.sequential.Greens_r
+                            )
+                            
+                            fig.update_traces(
+                                hovertemplate="<b>%{label}</b><br>Contribution: %{percent}<extra></extra>"
+                            )
+
+                            fig.update_layout(
+                                title={'text': "<b>Biomarker Contribution</b>", 'x':0.5, 'xanchor': 'center'},
+                                margin=dict(l=10, r=10, t=40, b=10),
+                                height=300,
+                                showlegend=True,
+                                legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                            st.markdown(f"""
+                            <p style="font-size: 0.95em;">
+                                    <strong>RECOMMENDATION:</strong><br>
+                                    {results.get('recommendation', 'No data available')}
+                            </p>
+                        """, unsafe_allow_html=True)
+                    full_col = st.container()
+
+                    with full_col:
+                        # --- THE SHADOW BOX (Bottom Section) ---
                         st.markdown(f"""
-                            <div style="box-shadow: 0 4px 12px {shadow_color}; 
-                                        padding: 25px; 
-                                        border-radius: 30px; 
-                                        border-block: 10px solid {border_color}; 
-                                        background-color: white; 
-                                        margin-bottom: 25px;">
+                            <div style="box-shadow: 0 4px 10px {shadow_color}; 
+                                padding: 25px; 
+                                border-radius: 30px; 
+                                border-block: 10px solid {border_color}; 
+                                background-color: white;">
                                 <h4 style="margin-top:0; color: Black;">CLINICAL ANALYSIS REPORT</h4>
                                 <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
-                                <p style="font-size: 0.95em; color: #444; line-height: 1.6;">
-                                    <strong>EXPLANATION:</strong><br>
-                                    {results['report']['clinical_explanation']}
-                                </p>
-                                <p style="font-size: 0.95em; color: #444;">
-                                    <strong>PRIMARY DRIVERS:</strong> {results['report']['primary_biomarkers']}
-                                </p>
+                                <div style="color: #444; line-height: 1.6;">
+                                <p style="font-size: 0.95em;"><strong>DESCRIPTION:</strong><br>{results.get('clinical_explanation', 'No data available')}</p>
                             </div>
                         """, unsafe_allow_html=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
+                        
                 except Exception as e:
                     st.error(f"System Error: {str(e)}")
 def doctor_dashboard():

@@ -2,7 +2,6 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-
 def plot_train_distribution(dist_dict, save_dir="../data/plots"):
     """
     Plot class distribution for hospital train splits.
@@ -15,8 +14,8 @@ def plot_train_distribution(dist_dict, save_dir="../data/plots"):
     }
     """
 
-    os.makedirs(save_dir, exist_ok=True)
-
+    os.makedirs(save_dir, exist_ok=True)  # ensure folder exists
+    print("Plot saved")
     hospitals = list(dist_dict.keys())
     class_1 = [dist_dict[h].get(1, 0.0) for h in hospitals]
     class_0 = [dist_dict[h].get(0, 0.0) for h in hospitals]
@@ -35,9 +34,7 @@ def plot_train_distribution(dist_dict, save_dir="../data/plots"):
     plt.legend()
     plt.grid(axis="y", linestyle="--", alpha=0.4)
 
-    save_path = os.path.join(
-        save_dir, "hospital_simulation_train_distribution.png"
-    )
+    save_path = os.path.join(save_dir, "hospital_simulation_train_distribution.png")
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
     plt.close()

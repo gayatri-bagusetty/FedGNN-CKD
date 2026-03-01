@@ -9,7 +9,7 @@ COMMON_FEATURES = [
 ]
 
 # Number of synthetic patients
-num_rows = 100
+num_rows = 300
 
 # Generate random synthetic data
 np.random.seed(42)
