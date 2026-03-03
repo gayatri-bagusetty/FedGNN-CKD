@@ -1,98 +1,79 @@
 import os
+import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-import sys
 
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, PROJECT_ROOT)
-from source.plot_hospital_distribution import plot_train_distribution
 
 def create_directories(base_path, hospitals):
-    """Ensures the directory structure exists for saving CSVs."""
     for hospital in hospitals:
         path = os.path.join(base_path, hospital)
         os.makedirs(path, exist_ok=True)
 
 
-def train_val_test_split(df):
-    """Splits dataframe into 70% train, 15% val, 15% test."""
-    train_df, temp_df = train_test_split(
-        df,
+def split_hospitals(X, y, num_hospitals=3):
+    indices = np.random.permutation(len(X))
+    splits = np.array_split(indices, num_hospitals)
+
+    hospital_data = []
+
+    for idx in splits:
+        hospital_data.append((X[idx], y[idx]))
+
+    return hospital_data
+
+
+def save_splits(X, y, hospital_name, base_path):
+
+    # 70 / 15 / 15 split
+    X_train, X_temp, y_train, y_temp = train_test_split(
+        X, y,
         test_size=0.30,
-        stratify=df['classification'],
+        stratify=y,
         random_state=42
     )
 
-    val_df, test_df = train_test_split(
-        temp_df,
+    X_val, X_test, y_val, y_test = train_test_split(
+        X_temp, y_temp,
         test_size=0.50,
-        stratify=temp_df['classification'],
+        stratify=y_temp,
         random_state=42
     )
 
-    return train_df, val_df, test_df
+    df_train = pd.DataFrame(X_train)
+    df_train["target"] = y_train
 
+    df_val = pd.DataFrame(X_val)
+    df_val["target"] = y_val
 
-def show_dist(df, name):
-    print(f"\n{name} Distribution:")
-    print(df['classification'].value_counts(normalize=True))
+    df_test = pd.DataFrame(X_test)
+    df_test["target"] = y_test
+
+    df_train.to_csv(f"{base_path}/{hospital_name}/train.csv", index=False)
+    df_val.to_csv(f"{base_path}/{hospital_name}/val.csv", index=False)
+    df_test.to_csv(f"{base_path}/{hospital_name}/test.csv", index=False)
+
+    print(f"{hospital_name} - Train: {len(df_train)}, Val: {len(df_val)}, Test: {len(df_test)}")
 
 
 def main():
+    print("HOSPITAL SIMULATION.................")
+    print("Loading processed dataset...")
 
-    print("Loading processed hospital datasets...")
-    try:
-        uci_clean = pd.read_csv("../data/processed/uci_clean.csv")
-        kaggle_clean = pd.read_csv("../data/processed/kaggle_clean.csv")
-        synthetic_clean = pd.read_csv("../data/processed/synthetic_clean.csv")
-    except FileNotFoundError as e:
-        print(f"Error: Could not find processed files. Run preprocessing.py first. {e}")
-        return
+    X = np.load("../data/processed/X.npy")
+    y = np.load("../data/processed/y.npy")
 
-    # Hospital assignment
-    hospital_A = uci_clean.copy()
-    hospital_B = kaggle_clean.copy()
-    hospital_C = synthetic_clean.copy()
+    print("Dataset shape:", X.shape)
 
-    print("Performing train/val/test splits...")
-    A_train, A_val, A_test = train_val_test_split(hospital_A)
-    B_train, B_val, B_test = train_val_test_split(hospital_B)
-    C_train, C_val, C_test = train_val_test_split(hospital_C)
+    hospital_data = split_hospitals(X, y, num_hospitals=3)
 
     output_base = "../data/processed"
     hospital_names = ['hospital_A', 'hospital_B', 'hospital_C']
     create_directories(output_base, hospital_names)
 
-    datasets = {
-        "hospital_A": (A_train, A_val, A_test),
-        "hospital_B": (B_train, B_val, B_test),
-        "hospital_C": (C_train, C_val, C_test)
-    }
+    for i, (X_h, y_h) in enumerate(hospital_data):
+        save_splits(X_h, y_h, hospital_names[i], output_base)
 
-    for name, (train_df, val_df, test_df) in datasets.items():
-        train_df.to_csv(f"{output_base}/{name}/train.csv", index=False)
-        val_df.to_csv(f"{output_base}/{name}/val.csv", index=False)
-        test_df.to_csv(f"{output_base}/{name}/test.csv", index=False)
-
-    print("\nHospital-specific datasets (train/val/test) saved successfully!")
-
-    print("\n--- Summary ---")
-    print(f"Hospital A - Train: {A_train.shape[0]}, Val: {A_val.shape[0]}, Test: {A_test.shape[0]}")
-    print(f"Hospital B - Train: {B_train.shape[0]}, Val: {B_val.shape[0]}, Test: {B_test.shape[0]}")
-    print(f"Hospital C - Train: {C_train.shape[0]}, Val: {C_val.shape[0]}, Test: {C_test.shape[0]}")
-
-    show_dist(A_train, "Hospital-A Train")
-    show_dist(B_train, "Hospital-B Train")
-    show_dist(C_train, "Hospital-C Train")
-    
-        # ---- Collect train distributions ----
-    dist_dict = {
-        "Hospital A": A_train["classification"].value_counts(normalize=True).to_dict(),
-        "Hospital B": B_train["classification"].value_counts(normalize=True).to_dict(),
-        "Hospital C": C_train["classification"].value_counts(normalize=True).to_dict(),
-    }
-
-    plot_train_distribution(dist_dict)
+    print("\nHospital datasets created successfully.")
 
 
 if __name__ == "__main__":

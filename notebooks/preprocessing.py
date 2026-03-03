@@ -109,113 +109,61 @@ def preprocess_uploaded_dataset(
 
     return X_scaled, y
 
-
-# --------------------------------------------------
-# FULL DATASET PREPROCESSING PIPELINE
-# --------------------------------------------------
+# Backend preprocessing code 
 def preprocess_ckd_data():
+    print("PREPROCESSING....................")
+    print("\n--- Loading New CKD Dataset ---")
 
-    print("\n--- Loading Datasets ---")
+    df = pd.read_csv("../data/raw/kidney_disease_dataset.csv")
 
-    uci_df = pd.read_csv("../data/raw/ckd_dataset.csv")
-    kaggle_df = pd.read_csv("../data/raw/kaggle_ckd.csv")
-    synthetic_df = pd.read_csv("../data/raw/synthetic_ckd.csv")
+    # Clean column names
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.lower()
+        .str.replace(" ", "_")
+    )
 
-    print(f"UCI shape: {uci_df.shape}")
-    print(f"Kaggle shape: {kaggle_df.shape}")
-    print(f"Synthetic shape: {synthetic_df.shape}")
+    print(f"Dataset shape: {df.shape}")
+    print("\nColumns after cleaning:")
+    print(df.columns.tolist())
 
-    for df in [uci_df, kaggle_df, synthetic_df]:
-        df.columns = (
-            df.columns
-            .str.strip()
-            .str.lower()
-            .str.replace(" ", "_")
-        )
+    # Encode categorical columns
+    from sklearn.preprocessing import LabelEncoder
 
-    uci_df.rename(columns={"class": "classification"}, inplace=True)
-    synthetic_df.rename(columns={"class": "classification"}, inplace=True, errors="ignore")
+    label_encoders = {}
 
-    if "id" in kaggle_df.columns:
-        kaggle_df.drop(columns=["id"], inplace=True)
+    for col in df.select_dtypes(include="object").columns:
+        le = LabelEncoder()
+        df[col] = le.fit_transform(df[col].astype(str))
+        label_encoders[col] = le
 
-    kaggle_df.rename(columns={"wc": "wbcc", "rc": "rbcc"}, inplace=True)
+    # Separate features & target
+    TARGET = "target"
 
-    FEATURES = [
-        'age','bp','sg','al','su','rbc','pc','pcc','ba','bgr','bu',
-        'sc','sod','pot','hemo','pcv','wbcc','rbcc','htn','dm','cad',
-        'appet','pe','ane'
-    ]
+    if TARGET not in df.columns:
+        raise ValueError("Target column 'target' not found in dataset")
 
-    TARGET = "classification"
+    FEATURES = [col for col in df.columns if col != TARGET]
 
-    num_cols = [
-        'age','bp','sg','al','su','bgr','bu','sc',
-        'sod','pot','hemo','pcv','wbcc','rbcc'
-    ]
+    # Handle missing values
+    df[FEATURES] = df[FEATURES].fillna(df[FEATURES].median())
 
-    cat_cols = [
-        'rbc','pc','pcc','ba','htn','dm',
-        'cad','appet','pe','ane'
-    ]
-
-    binary_map = {
-        'yes': 1, 'no': 0,
-        'ckd': 1, 'notckd': 0,
-        'poor': 1, 'good': 0,
-        'present': 1, 'notpresent': 0,
-        'abnormal': 1, 'normal': 0
-    }
-
-    for df in [uci_df, kaggle_df, synthetic_df]:
-
-        df.replace(['?', '\t?'], np.nan, inplace=True)
-
-        for col in num_cols:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-            df[col].fillna(df[col].median(), inplace=True)
-
-            # ✅ Round to 1 decimal point
-            df[col] = df[col].round(1)
-
-        df[TARGET] = (
-            df[TARGET]
-            .astype(str)
-            .str.strip()
-            .str.lower()
-            .map(binary_map)
-            .fillna(0)
-            .astype(int)
-        )
-
-        for col in cat_cols:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.strip()
-                .str.lower()
-                .map(binary_map)
-                .fillna(0)
-                .astype(int)
-            )
-
-    print("\n--- Saving Cleaned Raw Files ---")
+    # Normalize
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(df[FEATURES])
 
     os.makedirs("../data/processed/", exist_ok=True)
 
-    uci_df.to_csv("../data/processed/uci_clean.csv", index=False)
-    kaggle_df.to_csv("../data/processed/kaggle_clean.csv", index=False)
-    synthetic_df.to_csv("../data/processed/synthetic_clean.csv", index=False)
-
-    print("\n--- Normalizing Features ---")
-
-    scaler = StandardScaler()
-    X_uci = scaler.fit_transform(uci_df[FEATURES])
+    np.save("../data/processed/X.npy", X_scaled)
+    np.save("../data/processed/y.npy", df[TARGET].values)
 
     joblib.dump(scaler, "../data/processed/scaler.pkl")
     joblib.dump(FEATURES, "../data/processed/feature_order.pkl")
+    
+    df.to_csv("../data/processed/clean_kidney_disease_dataset.csv", index=False)
 
-    print("\n--- Preprocessing Completed Successfully ---")
+    print("\n--- Dataset Preprocessing Completed ---")
 
 if __name__ == "__main__":
     preprocess_ckd_data()
