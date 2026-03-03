@@ -4,6 +4,7 @@ import os
 from sklearn.preprocessing import StandardScaler
 import joblib
 from collections import Counter
+from imblearn.over_sampling import SMOTE
 
 # --------------------------------------------------
 # SINGLE PATIENT PREPROCESSING (FOR DASHBOARD / API)
@@ -112,7 +113,7 @@ def preprocess_uploaded_dataset(
 # Backend preprocessing code 
 def preprocess_ckd_data():
     print("PREPROCESSING....................")
-    print("\n--- Loading New CKD Dataset ---")
+    print("\n--- Loading New CKD Dataset (5-Class Staging) ---")
 
     df = pd.read_csv("../data/raw/kidney_disease_dataset.csv")
 
@@ -122,48 +123,71 @@ def preprocess_ckd_data():
         .str.strip()
         .str.lower()
         .str.replace(" ", "_")
+        .str.replace("(", "")
+        .str.replace(")", "")
+        .str.replace("/", "_")
+        .str.replace("-", "_")
     )
 
     print(f"Dataset shape: {df.shape}")
-    print("\nColumns after cleaning:")
-    print(df.columns.tolist())
+    print("\nOriginal 5-class distribution:")
+    print(df['target'].value_counts().sort_index())
+    
+    TARGET = "target"
+    if TARGET not in df.columns:
+        raise ValueError("Target column 'target' not found")
+
+    FEATURES = [col for col in df.columns if col != TARGET]
 
     # Encode categorical columns
     from sklearn.preprocessing import LabelEncoder
-
     label_encoders = {}
-
     for col in df.select_dtypes(include="object").columns:
         le = LabelEncoder()
         df[col] = le.fit_transform(df[col].astype(str))
         label_encoders[col] = le
 
-    # Separate features & target
-    TARGET = "target"
-
-    if TARGET not in df.columns:
-        raise ValueError("Target column 'target' not found in dataset")
-
-    FEATURES = [col for col in df.columns if col != TARGET]
-
     # Handle missing values
     df[FEATURES] = df[FEATURES].fillna(df[FEATURES].median())
+    
+    # Prepare for SMOTE
+    from imblearn.over_sampling import SMOTE
+    X = df[FEATURES].values
+    y = df[TARGET].values.astype(int)
+    
+    print(f"\nBefore SMOTE - Classes 0-4: {np.bincount(y)}")
 
-    # Normalize
+    # 5-CLASS SMOTE (perfectly balances all CKD stages)
+    smote = SMOTE(random_state=42, k_neighbors=5)
+    X_balanced, y_balanced = smote.fit_resample(X, y)
+    
+    print(f"After 5-Class SMOTE: {np.bincount(y_balanced)}")
+    print(f"Final shape: {X_balanced.shape}")
+
+    # Scale balanced data
+    from sklearn.preprocessing import StandardScaler
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(df[FEATURES])
+    X_scaled = scaler.fit_transform(X_balanced)
 
+    # Save everything
     os.makedirs("../data/processed/", exist_ok=True)
-
-    np.save("../data/processed/X.npy", X_scaled)
-    np.save("../data/processed/y.npy", df[TARGET].values)
-
+    
+    np.save("../data/processed/X_balanced.npy", X_scaled)
+    np.save("../data/processed/y_balanced.npy", y_balanced)
+    
     joblib.dump(scaler, "../data/processed/scaler.pkl")
     joblib.dump(FEATURES, "../data/processed/feature_order.pkl")
     
-    df.to_csv("../data/processed/clean_kidney_disease_dataset.csv", index=False)
+    # Save feature names for reference
+    pd.DataFrame(X_scaled, columns=FEATURES).assign(target=y_balanced).to_csv(
+        "../data/processed/ckd_5class_balanced.csv", index=False
+    )
 
-    print("\n--- Dataset Preprocessing Completed ---")
+    print("\n5-CLASS SMOTE Preprocessing Completed!")
+    print("Files saved:")
+    print("- X_balanced.npy (82k × 42 features)")
+    print("- y_balanced.npy (82k samples, 16k per CKD stage)")
+    print("- ckd_5class_balanced.csv (complete dataset)")
 
 if __name__ == "__main__":
     preprocess_ckd_data()

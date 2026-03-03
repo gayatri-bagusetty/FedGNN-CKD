@@ -93,14 +93,12 @@ def visualize_graph(data, save_path, max_nodes=300, title="Graph"):
     
     
     legend_elements = [
-        Line2D([0], [0], marker='o', color='w',
-           label=f'Class {i}',
-           markerfacecolor=cmap(i),
-           markersize=8)
+        Line2D([0], [0], marker='o', color='w', label=f'Stage {i}', 
+           markerfacecolor=cmap(i), markersize=8)
         for i in range(5)
     ]
 
-    # plt.legend(handles=legend_elements, loc="best")
+    plt.legend(handles=legend_elements, loc="best")
     plt.title(title)
     plt.savefig(save_path.replace(".pt", ".png"), dpi=300, bbox_inches="tight")
     plt.close()

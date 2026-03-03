@@ -1,9 +1,4 @@
-import numpy as np
-# y = np.load("../data/processed/y.npy")
-# print(np.unique(y))
-# print("Number of classes:", len(np.unique(y)))
+import torch
 
-
-y = np.load("../data/processed/y.npy")
-unique, counts = np.unique(y, return_counts=True)
-print(dict(zip(unique, counts)))
+print("CUDA Available:", torch.cuda.is_available())
+print("GPU Name:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No GPU")

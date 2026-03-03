@@ -46,7 +46,7 @@ def compute_metrics(model, graph):
 
 # LOCAL TRAINING FUNCTION
 def train_local_model(train_graph_path, val_graph_path,
-                      epochs=60, lr=0.01, hospital_name="Hospital"):
+                      epochs=120, lr=0.003, hospital_name="Hospital"):
 
     train_graph = torch.load(train_graph_path, weights_only=False).to(device)
     val_graph = torch.load(val_graph_path, weights_only=False).to(device)
@@ -54,34 +54,35 @@ def train_local_model(train_graph_path, val_graph_path,
     # ===== MODEL (5 CLASS) =====
     model = GCN(
         input_dim=train_graph.num_node_features,
-        hidden_dim=64,
+        hidden_dim=128,
         output_dim=5
     ).to(device)
 
-    optimizer = torch.optim.Adam(
-        model.parameters(),
+    optimizer = torch.optim.AdamW(
+        model.parameters(), 
         lr=lr,
-        weight_decay=1e-4
+        weight_decay=1e-3
+    )
+    
+    # ===== LEARNING RATE SCHEDULER =====
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, patience=5, factor=0.5  
     )
 
-    # ===== CLASS WEIGHTS (IMBALANCE FIX) =====
-    class_counts = torch.bincount(train_graph.y).float()
-    class_counts[class_counts == 0] = 1.0
-    class_weights = 1.0 / class_counts
-    class_weights = class_weights / class_weights.sum()
-
-    criterion = torch.nn.CrossEntropyLoss(weight=class_weights.to(device))
+    # ===== LOSS FUNCTION (SIMPLE - SMOTE HANDLES BALANCE) =====
+    # criterion = torch.nn.CrossEntropyLoss()
+    
+    # ===== CLASS WEIGHTS FOR IMBALANCE =====
+    class_counts = torch.bincount(train_graph.y)
+    total_samples = len(train_graph.y)
+    class_weights = total_samples / (len(class_counts) * class_counts.float())
+    criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+    print(f"Class weights: {class_weights}")
 
     train_acc_list = []
     val_acc_list = []
     train_f1_list = []
     val_f1_list = []
-
-    # ===== EARLY STOPPING =====
-    best_val_loss = float("inf")
-    best_model_state = None
-    patience = 7
-    patience_counter = 0
 
     monitor = ResourceMonitor()
     monitor.start_timer()
@@ -96,6 +97,7 @@ def train_local_model(train_graph_path, val_graph_path,
         train_loss = criterion(out, train_graph.y)
         train_loss.backward()
         optimizer.step()
+        
 
         # ---- VALIDATION LOSS ----
         model.eval()
@@ -103,6 +105,8 @@ def train_local_model(train_graph_path, val_graph_path,
             val_out = model(val_graph.x, val_graph.edge_index)
             val_loss = criterion(val_out, val_graph.y)
 
+        scheduler.step(val_loss)
+        
         train_acc, train_f1 = compute_metrics(model, train_graph)
         val_acc, val_f1 = compute_metrics(model, val_graph)
 
@@ -116,21 +120,7 @@ def train_local_model(train_graph_path, val_graph_path,
         print(f"Val   Acc: {val_acc:.4f} | Val   MacroF1: {val_f1:.4f}")
         print("-" * 50)
 
-        # ---- EARLY STOPPING LOGIC ----
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            best_model_state = model.state_dict()
-            patience_counter = 0
-        else:
-            patience_counter += 1
-
-        if patience_counter >= patience:
-            print(f"{hospital_name} Early stopping triggered.")
-            break
-
-    # ---- RESTORE BEST MODEL ----
-    if best_model_state is not None:
-        model.load_state_dict(best_model_state)
+    print(f"[{hospital_name}] Epoch {epoch+1}/{epochs} - Continuing training...")
 
     training_time = monitor.stop_timer()
     memory_used = monitor.memory_usage_mb()

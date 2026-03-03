@@ -110,7 +110,7 @@ def main():
     hospitals = ['A', 'B', 'C']
 
     for h in hospitals:
-        graph_path = os.path.join(GRAPH_DIR, f"hospital_{h}_train.pt")
+        graph_path = os.path.join(GRAPH_DIR, f"hospital_{h}_val.pt")
         model_path = os.path.join(MODEL_DIR, f"model_{h}.pth")
 
         if not os.path.exists(graph_path):
@@ -123,14 +123,14 @@ def main():
 
         graph = load_graph(graph_path)
 
-        model = GCN(graph.num_node_features, 32, 2).to(device)
+        model = GCN(graph.num_node_features, 128, 5).to(device)
         model.load_state_dict(torch.load(model_path, weights_only=True))
 
         best_ldp_model, best_eps, accs, clean_acc = select_best_epsilon(
             model, graph, eps_values, hospital_name=f"Hospital {h}"
         )
 
-        save_model_path = os.path.join(MODEL_DIR, f"model_{h}_ldp.pth")
+        save_model_path = os.path.join(MODEL_DIR, f"model_{h}_ldp_eps{best_eps:.1f}.pth")
         torch.save(best_ldp_model.state_dict(), save_model_path)
 
         plot_tradeoff(eps_values, accs, clean_acc, f"Hospital {h}")

@@ -56,24 +56,31 @@ def save_splits(X, y, hospital_name, base_path):
 
 
 def main():
-    print("HOSPITAL SIMULATION.................")
-    print("Loading processed dataset...")
+    print("HOSPITAL SIMULATION - 5-CLASS CKD STAGING...")
+    
+    # Load perfectly balanced 5-class data
+    X = np.load("../data/processed/X_balanced.npy")
+    y = np.load("../data/processed/y_balanced.npy")
+    
+    print(f"Balanced 5-class shape: {X.shape}")
+    print(f"Class distribution: {np.bincount(y)}")
+    print(f"Classes: No_Disease=0, Low=1, High=2, Moderate=3, Severe=4")
 
-    X = np.load("../data/processed/X.npy")
-    y = np.load("../data/processed/y.npy")
-
-    print("Dataset shape:", X.shape)
-
+    # Split into 3 hospitals (each gets ~27k samples)
     hospital_data = split_hospitals(X, y, num_hospitals=3)
-
+    
     output_base = "../data/processed"
-    hospital_names = ['hospital_A', 'hospital_B', 'hospital_C']
-    create_directories(output_base, hospital_names)
+    hospitals = ['hospital_A', 'hospital_B', 'hospital_C']
+    create_directories(output_base, hospitals)
 
     for i, (X_h, y_h) in enumerate(hospital_data):
-        save_splits(X_h, y_h, hospital_names[i], output_base)
+        save_splits(X_h, y_h, hospitals[i], output_base)
+        
+        # Print per-hospital class distribution
+        print(f"{hospitals[i]} classes: {np.bincount(y_h.astype(int))}")
 
-    print("\nHospital datasets created successfully.")
+    print("\n3 Hospitals × 27k samples × 5 balanced CKD stages = READY!")
+
 
 
 if __name__ == "__main__":
