@@ -2,17 +2,25 @@ import torch
 import torch.nn.functional as F
 import os
 import sys
-import pandas as pd
-import matplotlib.pyplot as plt
-from sklearn.metrics import accuracy_score
 import random
 import numpy as np
-import torch
+import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score, f1_score
 
+# ===== PROJECT PATH SETUP =====
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
+
+from data.models.gcn_model import GCN
 from source.plot_resource_efficiency import plot_resource_efficiency
 
+# Optional resource monitor
+try:
+    from notebooks.resource_monitor import ResourceMonitor
+except:
+    from resource_monitor import ResourceMonitor
+
+# ===== REPRODUCIBILITY =====
 SEED = 42
 random.seed(SEED)
 np.random.seed(SEED)
@@ -21,76 +29,67 @@ torch.cuda.manual_seed_all(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 
-# Automatic import handling for ResourceMonitor
-try:
-    from notebooks.resource_monitor import ResourceMonitor
-except (ImportError, ModuleNotFoundError):
-    try:
-        from resource_monitor import ResourceMonitor
-    except (ImportError, ModuleNotFoundError):
-        print("Warning: resource_monitor.py not found in expected paths.")
-
-# Ensure pathing for GCN model import
-sys.path.append(os.path.abspath(".."))
-from data.models.gcn_model import GCN
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-def compute_accuracy(model, graph):
+# METRIC FUNCTION
+def compute_metrics(model, graph):
     model.eval()
     with torch.no_grad():
         out = model(graph.x, graph.edge_index)
         preds = out.argmax(dim=1).cpu()
         labels = graph.y.cpu()
-    return accuracy_score(labels, preds)
 
+    acc = accuracy_score(labels, preds)
+    macro_f1 = f1_score(labels, preds, average="macro")
 
+    return acc, macro_f1
+
+# LOCAL TRAINING FUNCTION
 def train_local_model(train_graph_path, val_graph_path,
-                      epochs=60, lr=0.01, hospital_name="Hospital"):
-
-    if not os.path.exists(train_graph_path) or not os.path.exists(val_graph_path):
-        print(f"Error: Graph files for {hospital_name} not found.")
-        return None, None, None, None, None
+                      epochs=120, lr=0.003, hospital_name="Hospital"):
 
     train_graph = torch.load(train_graph_path, weights_only=False).to(device)
     val_graph = torch.load(val_graph_path, weights_only=False).to(device)
 
+    # ===== MODEL (5 CLASS) =====
     model = GCN(
         input_dim=train_graph.num_node_features,
-        hidden_dim=32,
-        output_dim=2
+        hidden_dim=128,
+        output_dim=5
     ).to(device)
 
-    # L2 regularization (weight decay)
-    optimizer = torch.optim.Adam(
-        model.parameters(),
+    optimizer = torch.optim.AdamW(
+        model.parameters(), 
         lr=lr,
-        weight_decay=1e-4
+        weight_decay=1e-3
+    )
+    
+    # ===== LEARNING RATE SCHEDULER =====
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, patience=5, factor=0.5  
     )
 
-    # ----- Class imbalance handling -----
-    class_counts = torch.bincount(train_graph.y).float()
-    class_counts[class_counts == 0] = 1.0
-    class_weights = 1.0 / class_counts
-    class_weights = class_weights / class_weights.sum()
-
-    criterion = torch.nn.CrossEntropyLoss(weight=class_weights.to(device))
+    # ===== LOSS FUNCTION (SIMPLE - SMOTE HANDLES BALANCE) =====
+    # criterion = torch.nn.CrossEntropyLoss()
+    
+    # ===== CLASS WEIGHTS FOR IMBALANCE =====
+    class_counts = torch.bincount(train_graph.y)
+    total_samples = len(train_graph.y)
+    class_weights = total_samples / (len(class_counts) * class_counts.float())
+    criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
+    print(f"Class weights: {class_weights}")
 
     train_acc_list = []
     val_acc_list = []
+    train_f1_list = []
+    val_f1_list = []
 
-    # ===== EARLY STOPPING SETUP =====
-    best_val_loss = float("inf")
-    best_model_state = None
-    patience = 5
-    patience_counter = 0
-
-    # ===== RESOURCE MONITOR =====
     monitor = ResourceMonitor()
     monitor.start_timer()
 
     for epoch in range(epochs):
+
+        # ---- TRAIN ----
         model.train()
         optimizer.zero_grad()
 
@@ -98,39 +97,31 @@ def train_local_model(train_graph_path, val_graph_path,
         train_loss = criterion(out, train_graph.y)
         train_loss.backward()
         optimizer.step()
+        
 
-        # ----- Validation loss -----
+        # ---- VALIDATION LOSS ----
         model.eval()
         with torch.no_grad():
             val_out = model(val_graph.x, val_graph.edge_index)
             val_loss = criterion(val_out, val_graph.y)
 
-        train_acc = compute_accuracy(model, train_graph)
-        val_acc = compute_accuracy(model, val_graph)
+        scheduler.step(val_loss)
+        
+        train_acc, train_f1 = compute_metrics(model, train_graph)
+        val_acc, val_f1 = compute_metrics(model, val_graph)
 
         train_acc_list.append(train_acc)
         val_acc_list.append(val_acc)
+        train_f1_list.append(train_f1)
+        val_f1_list.append(val_f1)
 
-        print(f"[{hospital_name}] Epoch {epoch+1}/{epochs} | "
-              f"Train Acc: {train_acc:.4f} | Val Acc: {val_acc:.4f}")
+        print(f"[{hospital_name}] Epoch {epoch+1}/{epochs}")
+        print(f"Train Acc: {train_acc:.4f} | Train MacroF1: {train_f1:.4f}")
+        print(f"Val   Acc: {val_acc:.4f} | Val   MacroF1: {val_f1:.4f}")
+        print("-" * 50)
 
-        # ===== EARLY STOPPING LOGIC =====
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            best_model_state = model.state_dict()
-            patience_counter = 0
-        else:
-            patience_counter += 1
+    print(f"[{hospital_name}] Epoch {epoch+1}/{epochs} - Continuing training...")
 
-        if patience_counter >= patience:
-            print(f"[{hospital_name}] Early stopping triggered at epoch {epoch+1}")
-            break
-
-    # ===== RESTORE BEST MODEL =====
-    if best_model_state is not None:
-        model.load_state_dict(best_model_state)
-
-    # ===== RESOURCE REPORT =====
     training_time = monitor.stop_timer()
     memory_used = monitor.memory_usage_mb()
 
@@ -138,25 +129,36 @@ def train_local_model(train_graph_path, val_graph_path,
     print(f"Training Time : {training_time:.2f} seconds")
     print(f"Memory Usage  : {memory_used:.2f} MB")
 
-    return model, train_acc_list, val_acc_list, training_time, memory_used
+    return model, train_acc_list, val_acc_list, train_f1_list, val_f1_list, training_time, memory_used
 
-def plot_accuracy(train_acc, val_acc, hospital_name):
+# PLOT FUNCTION
+def plot_metrics(train_acc, val_acc, train_f1, val_f1, hospital_name):
+
     plt.figure()
     plt.plot(train_acc, label="Train Accuracy")
     plt.plot(val_acc, label="Validation Accuracy")
     plt.xlabel("Epochs")
     plt.ylabel("Accuracy")
-    plt.title(f"{hospital_name} - Train vs Val Accuracy")
     plt.legend()
     plt.grid(True)
-
-    save_path = f"../data/graph/{hospital_name}_accuracy.png"
-    plt.savefig(save_path)
+    plt.title(f"{hospital_name} Accuracy")
+    plt.savefig(f"../data/plots/{hospital_name}_accuracy.png")
     plt.close()
-    print(f"Saved accuracy plot: {save_path}")
 
+    plt.figure()
+    plt.plot(train_f1, label="Train Macro F1")
+    plt.plot(val_f1, label="Validation Macro F1")
+    plt.xlabel("Epochs")
+    plt.ylabel("Macro F1")
+    plt.legend()
+    plt.grid(True)
+    plt.title(f"{hospital_name} Macro F1")
+    plt.savefig(f"../data/plots/{hospital_name}_macro_f1.png")
+    plt.close()
 
+# MAIN FUNCTION
 def main():
+
     graph_dir = "../data/graph"
     model_save_dir = "../data/models"
     os.makedirs(model_save_dir, exist_ok=True)
@@ -165,32 +167,35 @@ def main():
     resource_metrics = {}
 
     for h in hospitals:
+
+        print(f"\n====== Training Hospital {h} ======")
+
         train_graph_path = os.path.join(graph_dir, f"hospital_{h}_train.pt")
         val_graph_path = os.path.join(graph_dir, f"hospital_{h}_val.pt")
 
-        print(f"\n--- Training Hospital {h} ---")
-
-        model, train_acc, val_acc, training_time, memory_used = train_local_model(
+        model, train_acc, val_acc, train_f1, val_f1, training_time, memory_used = train_local_model(
             train_graph_path,
             val_graph_path,
             hospital_name=f"Hospital {h}"
         )
 
-        if model:
-            save_path = os.path.join(model_save_dir, f"model_{h}.pth")
-            torch.save(model.state_dict(), save_path)
+        save_path = os.path.join(model_save_dir, f"model_{h}.pth")
+        torch.save(model.state_dict(), save_path)
 
-            size_mb = ResourceMonitor.model_size_mb(save_path)
-            print(f"Model Communication Cost: {size_mb:.2f} MB")
-            resource_metrics[f"Hospital {h}"] = {
-                "time": training_time,
-                "memory": memory_used
-            }
+        size_mb = ResourceMonitor.model_size_mb(save_path)
 
-            plot_accuracy(train_acc, val_acc, f"hospital_{h}")
+        print(f"Model Size (Communication Cost): {size_mb:.2f} MB")
+
+        resource_metrics[f"Hospital {h}"] = {
+            "time": training_time,
+            "memory": memory_used
+        }
+
+        plot_metrics(train_acc, val_acc, train_f1, val_f1, f"hospital_{h}")
+
     plot_resource_efficiency(resource_metrics)
 
-    print("\nLocal models trained and graphs generated successfully.")
+    print("\nAll Local Models Trained Successfully.")
 
 
 if __name__ == "__main__":

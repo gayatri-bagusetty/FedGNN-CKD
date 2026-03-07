@@ -1,186 +1,149 @@
 import torch
-import sys
-import os
 import torch.nn.functional as F
 import numpy as np
-from torch_geometric.explain import Explainer, GNNExplainer
+import matplotlib.pyplot as plt
+import shap
+import os
+import sys
+from sklearn.preprocessing import StandardScaler
 
-# 1. PATH SETUP
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(BASE_DIR)
-
+# PATH SETUP
+sys.path.append(os.path.abspath(".."))
 from data.models.gcn_model import GCN
-from notebooks.preprocessing import preprocess_single_patient
 
-# 2. MODEL WRAPPER FOR EXPLAINER
-class WrappedModel(torch.nn.Module):
+plt.rcParams['figure.dpi'] = 300
+plt.rcParams['font.size'] = 12
 
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
+# CKD STAGES
+CKD_STAGES = ['Stage 0', 'Stage 1', 'Stage 2', 'Stage 3', 'Stage 4']
 
-    def forward(self, x, edge_index):
-        out = self.model(x, edge_index)
-        return out.squeeze(0)   # ensure shape [2]
+def create_background_dataset(n_samples=100):
+    """Generate background for SHAP"""
+    # Simulate 100 patients (your 42 features)
+    np.random.seed(42)
+    background = np.random.normal(0, 1, (n_samples, 42)).astype(np.float32)
+    # Add realistic CKD patterns to background
+    for i in range(n_samples):
+        if i % 20 == 0:  # 5% severe CKD in background
+            background[i, 11] += 3  # SC (serum creatinine)
+            background[i, 3] += 2   # AL (albumin)
+            background[i, 14] -= 2  # HEMO (hemoglobin)
+    return torch.FloatTensor(background)
 
-# 3. CLINICAL EXPLANATION GENERATOR
-def generate_clinical_description(prediction, prob, feat_imp):
-
-    feature_map = {
-        "SG": "Specific Gravity",
-        "AL": "Albumin",
-        "SU": "Sugar",
-        "SC": "Serum Creatinine",
-        "HEMO": "Hemoglobin"
-    }
-
-    selected = []
-    for name, value in feat_imp:
-        key = name.upper()
-        if key in feature_map:
-            selected.append((key, abs(value)))
-
-    final_values = []
-    for key in feature_map.keys():
-        found = next((v for k, v in selected if k == key), 0.0001)
-        final_values.append(found)
-
-    total = sum(final_values)
-    percentages = [(v / total) * 100 for v in final_values]
-
-    if prediction == "CKD":
-
-        clinical_explanation = """
-The model predicts Chronic Kidney Disease because the biomarker interaction
-pattern resembles renal dysfunction.
-
-• Serum Creatinine:
-  High creatinine indicates reduced glomerular filtration rate (GFR).
-
-• Albumin:
-  Protein leakage into urine indicates glomerular damage.
-
-• Specific Gravity:
-  Abnormal urine concentration suggests tubular dysfunction.
-
-• Hemoglobin:
-  Low hemoglobin may indicate anemia associated with CKD.
-
-• Sugar:
-  Persistent glycosuria increases diabetic nephropathy risk.
-"""
-
-        recommendation = (
-            "Evaluate eGFR, urine albumin-to-creatinine ratio, "
-            "blood pressure control, and glycemic status."
-        )
-
-    else:
-
-        clinical_explanation = """
-The model predicts Non-CKD because renal biomarkers remain within
-physiological ranges.
-
-• Serum Creatinine indicates preserved kidney filtration.
-• Albumin levels do not indicate proteinuria.
-• Specific Gravity suggests normal urine concentration.
-• Hemoglobin is not indicative of CKD-related anemia.
-• Sugar levels do not suggest diabetic renal stress.
-"""
-
-        recommendation = (
-            "Continue routine monitoring depending on patient risk factors."
-        )
-
-    return {
-        "prediction": prediction,
-        "confidence": f"{prob*100:.1f}%",
-        "primary_biomarkers": ", ".join(feature_map.values()),
-        "chart_values": percentages,
-        "clinical_explanation": clinical_explanation,
-        "recommendation": recommendation
-    }
-
-# 4. MAIN XAI INFERENCE FUNCTION
-def run_inference_xai():
-    feature_names = [
-        'age','bp','sg','al','su','rbc','pc','pcc','ba',
-        'bgr','bu','sc','sod','pot','hemo','pcv',
-        'wbcc','rbcc','htn','dm','cad','appet','pe','ane'
-    ]
-    # Load Model
-    model = GCN(input_dim=24, hidden_dim=32, output_dim=2)
-    model_path = os.path.join(BASE_DIR,"data","models","global_model.pth")
-    if not os.path.exists(model_path):
-        print("global_model.pth not found")
-        return
-    model.load_state_dict(torch.load(model_path,map_location="cpu"))
+def run_shap_xai():
+    """SHAP + Captum XAI for FedGNN-CKD"""
+    
+    # YOUR MODEL DIMENSIONS + GLOBAL LDP
+    model = GCN(input_dim=42, hidden_dim=128, output_dim=5)
+    model_path = "../data/models/global_model_ldp.pth"
+    
+    print("Loading FedGNN-CKD Global LDP Model...")
+    model.load_state_dict(torch.load(model_path, map_location="cpu"))
     model.eval()
-    print("Global model loaded.")
+    
+    # Test patients (Stage 4 CKD, Stage 2 CKD, Healthy)
+    test_patients = np.array([
+        # Stage 4 CKD: High SC, AL, low HEMO
+        [65, 160, 1.005, 4, 2, 0, 1, 1, 1, 250, 85, 7.2, 128, 6.2, 7.5, 22, 12000, 2.8, 1, 1, 1, 0, 1, 1, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        # Stage 2 CKD: Moderate SC elevation
+        [55, 140, 1.015, 2, 0, 0, 0, 0, 0, 180, 45, 2.1, 135, 4.8, 11.2, 35, 9000, 4.2, 1, 0, 0, 1, 0, 0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+        # Healthy: Normal biomarkers
+        [35, 120, 1.020, 0, 0, 1, 0, 0, 0, 95, 18, 0.9, 140, 4.2, 15.0, 45, 7500, 5.0, 0, 0, 0, 1, 0, 0, 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    ], dtype=np.float32)
+    
+    # Feature names (first 24 meaningful)
+    feature_names = ['age', 'bp', 'sg', 'al', 'su', 'rbc', 'pc', 'pcc', 'ba', 'bgr',
+                    'bu', 'SC', 'sod', 'pot', 'hemo', 'pcv', 'wbcc', 'rbcc', 
+                    'htn', 'dm', 'cad', 'appet', 'pe', 'ane'] + [f'f{i}' for i in range(18)]
+    
+    # SHAP KernelExplainer (model-agnostic)
+    print("Computing SHAP values...")
+    background = create_background_dataset()
+    
+    # Wrapper for SHAP (single forward pass)
+    def model_predict(X):
+        X_tensor = torch.FloatTensor(X).unsqueeze(1)  # [N, 1, 42]
+        edge_index = torch.tensor([[0]], dtype=torch.long).repeat(1, X.shape[0]).t()
+        with torch.no_grad():
+            logits = model(X_tensor[:, 0], edge_index)
+            return logits.cpu().numpy()
+    
+    # SHAP Explainer
+    explainer = shap.KernelExplainer(model_predict, background.numpy())
+    shap_values = explainer.shap_values(test_patients, nsamples=100)
+    
+    # Predictions
+    predictions = model_predict(test_patients)
+    probs = F.softmax(torch.FloatTensor(predictions), dim=1).numpy()
+    pred_classes = np.argmax(probs, axis=1)
+    
+    print("\nSHAP XAI Results:")
+    for i, (pred, prob, patient) in enumerate(zip(pred_classes, probs, test_patients)):
+        stage = CKD_STAGES[pred]
+        print(f"\nPatient {i+1}: {stage} ({prob[pred]:.1%} confidence)")
+        print(f"  Top drivers: SC={shap_values[pred][i][11]:+.3f}, AL={shap_values[pred][i][3]:+.3f}")
+    
+    # === PUBLICATION PLOTS ===
+    fig = plt.figure(figsize=(20, 12))
+    
+    # Plot 1: Summary plot (SHAP standard)
+    plt.subplot(2, 3, 1)
+    shap.summary_plot(shap_values[pred_classes[0]], test_patients, feature_names=feature_names[:24],
+                     max_display=12, show=False)
+    plt.title(f'SHAP Summary - {CKD_STAGES[pred_classes[0]]}', fontsize=14, fontweight='bold')
+    
+    # Plot 2: Patient-specific bar
+    plt.subplot(2, 3, 2)
+    top_features = np.argsort(np.abs(shap_values[pred_classes[0]][0]))[-10:]
+    plt.barh(range(10), shap_values[pred_classes[0]][0, top_features][::-1])
+    plt.yticks(range(10), [feature_names[i][:10] for i in top_features[::-1]])
+    plt.xlabel('SHAP Value')
+    plt.title('Patient 1 Feature Importance')
+    
+    # Plot 3: Force plot (Patient 1)
+    plt.subplot(2, 3, 3)
+    shap.force_plot(explainer.expected_value[pred_classes[0]], 
+                   shap_values[pred_classes[0]][0], test_patients[0],
+                   feature_names=feature_names[:24], matplotlib=True, show=False)
+    plt.title('SHAP Force Plot')
+    
+    # Plot 4: Multi-class contribution
+    plt.subplot(2, 3, 4)
+    for i, stage in enumerate(CKD_STAGES):
+        plt.scatter(test_patients[:, 11], shap_values[i][:, 11], label=stage, s=100, alpha=0.7)
+    plt.xlabel('Serum Creatinine (SC)')
+    plt.ylabel('SHAP value for SC')
+    plt.title('SC Contribution by CKD Stage')
+    plt.legend()
+    
+    # Plot 5: Waterfall plot
+    plt.subplot(2, 3, 5)
+    shap.waterfall_plot(shap.Explanation(
+        values=shap_values[pred_classes[0]][0],
+        base_values=explainer.expected_value[pred_classes[0]],
+        data=test_patients[0],
+        feature_names=feature_names[:24]
+    ), show=False)
+    
+    # Plot 6: Model prediction vs SHAP
+    plt.subplot(2, 3, 6)
+    x_pos = np.arange(5)
+    plt.bar(x_pos, probs[0], color='coral', alpha=0.8, label='Model Prediction')
+    plt.plot(x_pos[pred_classes[0]], probs[0, pred_classes[0]], 'ro', markersize=12, label='Predicted')
+    plt.xticks(x_pos, CKD_STAGES)
+    plt.ylabel('Probability')
+    plt.title('5-Class CKD Prediction')
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig('../data/plots/shap_fedgnn_ckd.png', dpi=300, bbox_inches='tight')
+    plt.show()
+    
+    print("\nSHAP XAI COMPLETE!")
+    print("Plot saved: shap_fedgnn_ckd.png")
+    
+    return shap_values, probs
 
-    # Example CKD Patient
-    raw_patient = {
-        'age':60,'bp':180,'sg':1.005,'al':4,'su':3,
-        'rbc':'abnormal','pc':'abnormal','pcc':'present','ba':'present',
-        'bgr':250,'bu':90,'sc':5.5,'sod':130,'pot':5.8,'hemo':8,
-        'pcv':28,'wbcc':18000,'rbcc':3.0,'htn':'Yes','dm':'Yes',
-        'cad':'Yes','appet':'poor','pe':'Yes','ane':'Yes'
-    }
-    # Preprocess Patient
-    scaler_path = os.path.join(BASE_DIR,"data","processed","scaler.pkl")
-    x_scaled = preprocess_single_patient(raw_patient)
-    test_patient = torch.tensor(x_scaled,dtype=torch.float32).view(1,-1)
-
-    # Graph structure (single node)
-    edge_index = torch.empty((2,0),dtype=torch.long)
-
-    # Prediction
-    with torch.no_grad():
-        logits = model(test_patient, edge_index)
-        probs = F.softmax(logits.squeeze(0),dim=0)
-        pred_class = torch.argmax(probs).item()
-        confidence = probs[pred_class].item()
-    prediction = "CKD" if pred_class==1 else "Non-CKD"
-    print("\nPrediction:",prediction)
-    print("Confidence:",f"{confidence:.2%}")
-
-    # Run GNNExplainer
-    wrapped_model = WrappedModel(model)
-    explainer = Explainer(
-        model=wrapped_model,
-        algorithm=GNNExplainer(epochs=200),
-        explanation_type="model",
-        node_mask_type="attributes",
-        model_config=dict(
-            mode="binary_classification",
-            task_level="node",
-            return_type="raw"
-        )
-    )
-    print("\nRunning GNNExplainer...")
-    explanation = explainer(
-        x=test_patient,
-        edge_index=edge_index
-    )
-    # Feature Importance
-    importances = explanation.node_mask.abs().squeeze().cpu().numpy()
-    feat_imp = sorted(
-        zip(feature_names,importances),
-        key=lambda x:x[1],
-        reverse=True
-    )
-    print("\nTop Biomarker Contributions:")
-    for f,s in feat_imp[:5]:
-        print(f"{f.upper():<10}: {s:.4f}")
-
-    # Clinical Explanation
-    report = generate_clinical_description(prediction,confidence,feat_imp)
-    print("\nClinical Interpretation:")
-    print(report["clinical_explanation"])
-    print("\nRecommendation:")
-    print(report["recommendation"])
-    return report
-
-# RUN SCRIPT
 if __name__ == "__main__":
-    run_inference_xai()
+    # Install: pip install shap
+    shap_values, probs = run_shap_xai()
