@@ -54,13 +54,6 @@ def analysis_tool(engine):
 
         if submitted:
                 try:
-                    root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-                    model_path = os.path.join(root, "data", "models", "global_model.pth")
-                    scaler_path = os.path.join(root, "data", "processed", "scaler.pkl")
-
-                    from clinical_engine import ClinicalInferenceEngine
-                    engine = ClinicalInferenceEngine(model_path, scaler_path)
-
                     raw_patient_data = {
                         'age': age, 'bp': bp, 'sg': sg, 'al': al, 'su': su, 'rbc': rbc, 
                         'pc': pc, 'pcc': pcc, 'ba': ba, 'bgr': bgr, 'bu': bu, 'sc': sc, 
@@ -77,8 +70,15 @@ def analysis_tool(engine):
 
                     with res_col:
                         st.markdown("### Diagnosis")
-                        border_color = "#D81939" if results["prediction"] == "CKD" else "#18B78A"
-                        shadow_color = "rgba(216,25,57,0.4)" if results["prediction"] == "CKD" else "rgba(24,183,138,0.4)"
+                        if results["prediction"] == "CKD":
+                            border_color = "#D81939"
+                            shadow_color = "rgba(216,25,57,0.4)"
+                        elif results["prediction"] == "Borderline Risk":
+                            border_color = "#F59E0B"
+                            shadow_color = "rgba(245,158,11,0.4)"
+                        else:
+                            border_color = "#18B78A"
+                            shadow_color = "rgba(24,183,138,0.4)"
                         st.markdown(f"""
                             <div style="box-shadow: 0 6px 18px {shadow_color}; padding: 60px; border-radius: 30px; border-block: 10px solid {border_color}; background-color: white;">
                             <p style="margin:0; font-size: 14px; color: #666;">Current Prediction</p>
@@ -104,11 +104,18 @@ def analysis_tool(engine):
                                 "Hemoglobin"
                             ]
                             values = results['chart_values']
+                            if results["prediction"] == "CKD":
+                                colors = px.colors.sequential.Reds_r
+                            elif results["prediction"] == "Borderline Risk":
+                                colors = px.colors.sequential.Oranges_r
+                            else:
+                                colors = px.colors.sequential.Greens_r
+
                             fig = px.pie(
                                 names=labels,
                                 values=values,
-                                hole=0.5, # Donut style
-                                color_discrete_sequence=px.colors.sequential.Reds_r if results['prediction'] == "CKD" else px.colors.sequential.Greens_r
+                                hole=0.5,
+                                color_discrete_sequence=colors
                             )
                             
                             fig.update_traces(

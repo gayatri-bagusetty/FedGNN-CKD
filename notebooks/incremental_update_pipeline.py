@@ -11,7 +11,7 @@ if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
 from notebooks.preprocessing import preprocess_uploaded_dataset
-from notebooks.graph_construction import build_graph
+from notebooks.graph_construction import construct_graph
 from notebooks.local_gnn_training import train_local_model
 from notebooks.local_ldp import select_best_epsilon
 
@@ -29,7 +29,7 @@ def run_incremental_update(csv_path):
     logs.append("Preprocessing completed.")
 
     logs.append("Building graph from processed data...")
-    train_graph_path, val_graph_path = build_graph(processed_path)
+    train_graph_path, val_graph_path = construct_graph(processed_path)
     logs.append("Graph construction completed.")
 
     logs.append("Training local model...")
