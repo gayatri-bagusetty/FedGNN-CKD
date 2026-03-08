@@ -33,9 +33,10 @@ class ClinicalInferenceEngine:
         self.feature_names = joblib.load(
             os.path.join(BASE_DIR, "data", "processed", "feature_order.pkl")
         )
-        self.train_features = np.load(
-            os.path.join(BASE_DIR, "data", "processed", "X_train.npy")
-        )
+        graph_path = os.path.join(BASE_DIR, "data", "graph", "hospital_A_train.pt")
+        graph = torch.load(graph_path)
+        self.train_features = graph.x.cpu().numpy()
+        self.edge_index = graph.edge_index
         self.train_edge_index = torch.load(
             os.path.join(BASE_DIR, "data", "processed", "edge_index.pt")
         )
