@@ -2,41 +2,43 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot_train_distribution(dist_dict, save_dir="../data/plots"):
-    """
-    Plot class distribution for hospital train splits.
 
-    dist_dict format:
-    {
-        "Hospital A": {0: proportion, 1: proportion},
-        "Hospital B": {0: proportion, 1: proportion},
-        "Hospital C": {0: proportion, 1: proportion}
-    }
-    """
+def get_distribution(df):
+    dist = df["classification"].value_counts(normalize=True).to_dict()
+    return dist.get(0, 0), dist.get(1, 0)
 
-    os.makedirs(save_dir, exist_ok=True)  # ensure folder exists
-    print("Plot saved")
-    hospitals = list(dist_dict.keys())
-    class_1 = [dist_dict[h].get(1, 0.0) for h in hospitals]
-    class_0 = [dist_dict[h].get(0, 0.0) for h in hospitals]
 
-    x = np.arange(len(hospitals))
+def plot_smote_comparison(train_before, train_after, save_dir="../data/plots"):
+    os.makedirs(save_dir, exist_ok=True)
+    hospitals = ["Hospital A", "Hospital B", "Hospital C"]
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     width = 0.35
+    x = np.arange(len(hospitals))
 
-    plt.figure(figsize=(6, 4))
-    plt.bar(x - width / 2, class_1, width, label="Class 1 (CKD)")
-    plt.bar(x + width / 2, class_0, width, label="Class 0 (Non-CKD)")
+    datasets = [
+        ("Train Before SMOTE", train_before),
+        ("Train After SMOTE", train_after)
+    ]
 
-    plt.xticks(x, hospitals)
-    plt.ylabel("Proportion")
-    plt.ylim(0, 1.0)
-    plt.title("Train Data Class Distribution Across Hospitals")
-    plt.legend()
-    plt.grid(axis="y", linestyle="--", alpha=0.4)
-
-    save_path = os.path.join(save_dir, "hospital_simulation_train_distribution.png")
-    plt.tight_layout()
+    for i, (title, data_list) in enumerate(datasets):
+        class0 = []
+        class1 = []
+        for df in data_list:
+            c0, c1 = get_distribution(df)
+            class0.append(c0)
+            class1.append(c1)
+        ax = axes[i]
+        ax.bar(x - width/2, class0, width, label="Class 0 (Non-CKD)")
+        ax.bar(x + width/2, class1, width, label="Class 1 (CKD)")
+        ax.set_xticks(x)
+        ax.set_xticklabels(hospitals)
+        ax.set_ylim(0, 1)
+        ax.set_title(title)
+        ax.grid(axis="y", linestyle="--", alpha=0.4)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=2)
+    plt.tight_layout(rect=[0, 0, 1, 0.9])
+    save_path = os.path.join(save_dir, "smote_train_distribution.png")
     plt.savefig(save_path, dpi=300)
     plt.close()
-
-    print(f"[INFO] Distribution plot saved at: {save_path}")
+    print(f"[INFO] Plot saved at: {save_path}")

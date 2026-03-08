@@ -4,159 +4,221 @@ from datetime import datetime
 import os
 import sys
 import plotly.express as px # Added for the donut chart
+import plotly.graph_objects as go
 from database import save_patient_data, fetch_all_patients, get_total_patients, get_classification_stats
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from clinical_engine import ClinicalInferenceEngine
-
-@st.cache_resource
-def get_inference_engine():
-    # This only runs ONCE. Subsequent calls return the same object instantly.
-    root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    model_path = os.path.join(root, "data", "models", "global_model.pth")
-    scaler_path = os.path.join(root, "data", "processed", "scaler.pkl")
-    return ClinicalInferenceEngine(model_path, scaler_path)
-
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.append(BASE_DIR)
+from notebooks.inference_xai import get_dashboard_prediction
+    
 @st.fragment
-def analysis_tool(engine):
-        st.subheader("🔬 Clinical Diagnostic Analysis")
-        with st.form("ckd_form"):
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                age = st.number_input("Age", 1, 120, 45)
-                bp = st.number_input("Blood Pressure", 50, 200, 80)
-                sg = st.number_input("Specific Gravity", min_value=1.001, max_value=1.035, value=1.020,step=0.005,format="%.3f")
-                al = st.selectbox("Albumin", [0, 1, 2, 3, 4, 5])
-                su = st.selectbox("Sugar", [0, 1, 2, 3, 4, 5])
-                rbc = st.selectbox("RBC", ["normal", "abnormal"])
-            with col2:
-                pc = st.selectbox("Pus Cell", ["normal", "abnormal"])
-                pcc = st.selectbox("Pus Cell Clumps", ["notpresent", "present"])
-                ba = st.selectbox("Bacteria", ["notpresent", "present"])
-                bgr = st.number_input("Blood Glucose Random", 20, 500, 120)
-                bu = st.number_input("Blood Urea", 1, 400, 40)
-                sc = st.number_input("Serum Creatinine", 0.0, 15.0, 1.2)
-            with col3:
-                sod = st.number_input("Sodium", 100, 170, 135)
-                pot = st.number_input("Potassium", 2.0, 8.0, 4.5)
-                hemo = st.number_input("Hemoglobin", 3.0, 18.0, 12.0)
-                pcv = st.number_input("Packed Cell Volume", 10, 60, 40)
-                wbcc = st.number_input("WBC Count", 2000, 20000, 8000)
-                rbcc = st.number_input("RBC Count (m/uL)", 2.0, 8.0, 4.5)
-            with col4:
-                htn = st.selectbox("Hypertension", ["No", "Yes"])
-                dm = st.selectbox("Diabetes Mellitus", ["No", "Yes"])
-                cad = st.selectbox("CAD", ["No", "Yes"])
-                appet = st.selectbox("Appetite", ["good", "poor"])
-                pe = st.selectbox("Pedal Edema", ["No", "Yes"])
-                ane = st.selectbox("Anemia", ["No", "Yes"])
-            submitted = st.form_submit_button("Run Diagnostic Analysis", type="primary")
+def analysis_tool():
+    st.subheader("🔬 Clinical Diagnostic Analysis")
+    with st.form("ckd_form"):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            age = st.number_input("Age", 1, 120, 45)
+            bp = st.number_input("Blood Pressure", 50, 200, 80)
+            sg = st.number_input("Specific Gravity", min_value=1.001, max_value=1.035, value=1.020, step=0.005, format="%.3f")
+            al = st.selectbox("Albumin", [0,1,2,3,4,5])
+            su = st.selectbox("Sugar", [0,1,2,3,4,5])
+            rbc = st.selectbox("RBC", ["normal","abnormal"])
 
-        if submitted:
-                try:
-                    raw_patient_data = {
-                        'age': age, 'bp': bp, 'sg': sg, 'al': al, 'su': su, 'rbc': rbc, 
-                        'pc': pc, 'pcc': pcc, 'ba': ba, 'bgr': bgr, 'bu': bu, 'sc': sc, 
-                        'sod': sod, 'pot': pot, 'hemo': hemo, 'pcv': pcv, 'wbcc': wbcc,
-                        'rbcc': rbcc, 'htn': htn, 'dm': dm, 'cad': cad, 'appet': appet, 
-                        'pe': pe, 'ane': ane
+        with col2:
+            pc = st.selectbox("Pus Cell", ["normal","abnormal"])
+            pcc = st.selectbox("Pus Cell Clumps", ["notpresent","present"])
+            ba = st.selectbox("Bacteria", ["notpresent","present"])
+            bgr = st.number_input("Blood Glucose Random", 20, 500, 120)
+            bu = st.number_input("Blood Urea", 1, 400, 40)
+            sc = st.number_input("Serum Creatinine", 0.0, 15.0, 1.2)
+
+        with col3:
+            sod = st.number_input("Sodium", 100, 170, 135)
+            pot = st.number_input("Potassium", 2.0, 8.0, 4.5)
+            hemo = st.number_input("Hemoglobin", 3.0, 18.0, 12.0)
+            pcv = st.number_input("Packed Cell Volume", 10, 60, 40)
+            wbcc = st.number_input("WBC Count", 2000, 20000, 8000)
+            rbcc = st.number_input("RBC Count (m/uL)", 2.0, 8.0, 4.5)
+
+        with col4:
+            htn = st.selectbox("Hypertension", ["No","Yes"])
+            dm = st.selectbox("Diabetes Mellitus", ["No","Yes"])
+            cad = st.selectbox("CAD", ["No","Yes"])
+            appet = st.selectbox("Appetite", ["good","poor"])
+            pe = st.selectbox("Pedal Edema", ["No","Yes"])
+            ane = st.selectbox("Anemia", ["No","Yes"])
+
+        submitted = st.form_submit_button("Run Diagnostic Analysis", type="primary")
+
+    if submitted:
+        try:
+            raw_patient_data = {
+                'age':age,'bp':bp,'sg':sg,'al':al,'su':su,'rbc':rbc,
+                'pc':pc,'pcc':pcc,'ba':ba,'bgr':bgr,'bu':bu,'sc':sc,
+                'sod':sod,'pot':pot,'hemo':hemo,'pcv':pcv,'wbcc':wbcc,
+                'rbcc':rbcc,'htn':htn,'dm':dm,'cad':cad,'appet':appet,
+                'pe':pe,'ane':ane
+            }
+
+            with st.spinner("Processing through FedGNN-XAI Engine..."):
+                results = get_dashboard_prediction(raw_patient_data)
+            st.markdown("---")
+
+            res_col, xai_col = st.columns([1,1.2])
+            # CKD risk (always probability of CKD)
+            confidence = results["probability"] * 100
+
+            # Model confidence depends on predicted class
+            if results["prediction"] == "CKD":
+                risk_value = results["probability"] * 100
+            else:
+                risk_value = (1 - results["probability"]) * 100
+            
+            # DIAGNOSIS PANEL
+            with res_col:
+
+                st.markdown("### Diagnosis")
+
+                if results["prediction"] == "CKD":
+                    border_color = "#D81939"
+
+                elif results["prediction"] == "Borderline Risk":
+                    border_color = "#F59E0B"
+
+                else:
+                    border_color = "#18B78A"
+
+                st.markdown(f"""
+                    <div style="
+                        padding:28px;
+                        border-radius:12px;
+                        border:1px solid {border_color};
+                        background:white;
+                    ">
+                    <div style="text-align:center;">
+                        <p style="margin-bottom:6px;font-size:14px;color:#666;">Current Prediction</p>
+                        <h2 style="margin:0;color:{border_color};font-size:34px;font-weight:600;">
+                            {results['prediction']}
+                        </h2>
+                    </div>
+                    <hr style="margin:20px 0;border:0;border-top:1px solid #e5e7eb;">
+                    <div style="text-align:center;">
+                        <p style="margin-bottom:6px;font-size:14px;color:#666;">Model Confidence</p>
+                        <h3 style="margin:0;font-size:28px;font-weight:600;">
+                            {confidence:.1f}%
+                        </h3>
+                    </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+                # -------- RISK GAUGE --------
+                st.markdown("<div style='margin-top:40px;'></div>", unsafe_allow_html=True)
+                fig = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=risk_value,
+                    number={'suffix':"%",'font':{'size':36}},
+                    title={'text':"<b>CKD Risk Score</b>",'font':{'size':18, 'color': 'black'}},
+                    gauge={
+                        'axis':{'range':[0,100]},
+                        'bar':{'color':border_color},
+                        'bgcolor':"white",
+                        'borderwidth':2,
+                        'bordercolor':"#e5e7eb",
+                        'steps':[
+                            {'range':[0,30],'color':"#10b981"},
+                            {'range':[30,70],'color':"#f59e0b"},
+                            {'range':[70,100],'color':"#ef4444"}
+                        ],
+                        'threshold':{
+                            'line':{'color':"black",'width':4},
+                            'thickness':0.75,
+                            'value':risk_value
+                        }
                     }
+                ))
 
-                    with st.spinner("Processing through FedGNN-XAI Engine..."):
-                        results = engine.run_diagnosis(raw_patient_data)
-                
-                    st.markdown("---")
-                    res_col, xai_col = st.columns([1, 1.2])
+                fig.update_layout(
+                    height=280,
+                    margin=dict(l=20,r=20,t=30,b=10)
+                )
 
-                    with res_col:
-                        st.markdown("### Diagnosis")
-                        if results["prediction"] == "CKD":
-                            border_color = "#D81939"
-                            shadow_color = "rgba(216,25,57,0.4)"
-                        elif results["prediction"] == "Borderline Risk":
-                            border_color = "#F59E0B"
-                            shadow_color = "rgba(245,158,11,0.4)"
-                        else:
-                            border_color = "#18B78A"
-                            shadow_color = "rgba(24,183,138,0.4)"
-                        st.markdown(f"""
-                            <div style="box-shadow: 0 6px 18px {shadow_color}; padding: 60px; border-radius: 30px; border-block: 10px solid {border_color}; background-color: white;">
-                            <p style="margin:0; font-size: 14px; color: #666;">Current Prediction</p>
-                            <h2 style="margin:0; color: {border_color};">{results['prediction']}</h2>
-                            <hr style="margin: 15px 0; border: 0; border-top: 1px solid #eee;">
-                            <p style="margin:0; font-size: 14px; color: #666;">Model Confidence</p>
-                            <h3 style="margin:0;">{results['probability']:.2%}</h3>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        st.markdown(f"       ")
-                        save_patient_data(raw_patient_data, results["prediction"])
-                    
-                    with xai_col:
-                        st.markdown("### Explanation")
+                st.plotly_chart(fig, use_container_width=True)
 
-                        # --- THE PIE CHART (Top Section) ---
-                        if 'chart_values' in results:
-                            labels = [
-                                "Specific Gravity",
-                                "Albumin",
-                                "Sugar",
-                                "Serum Creatinine",
-                                "Hemoglobin"
-                            ]
-                            values = results['chart_values']
-                            if results["prediction"] == "CKD":
-                                colors = px.colors.sequential.Reds_r
-                            elif results["prediction"] == "Borderline Risk":
-                                colors = px.colors.sequential.Oranges_r
-                            else:
-                                colors = px.colors.sequential.Greens_r
+                save_patient_data(raw_patient_data, results["prediction"])
 
-                            fig = px.pie(
-                                names=labels,
-                                values=values,
-                                hole=0.5,
-                                color_discrete_sequence=colors
-                            )
-                            
-                            fig.update_traces(
-                                hovertemplate="<b>%{label}</b><br>Contribution: %{percent}<extra></extra>"
-                            )
+            # XAI PANEL
+            with xai_col:
 
-                            fig.update_layout(
-                                title={'text': "<b>Biomarker Contribution</b>", 'x':0.5, 'xanchor': 'center'},
-                                margin=dict(l=10, r=10, t=40, b=10),
-                                height=300,
-                                showlegend=True,
-                                legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                            st.markdown(f"""
-                            <p style="font-size: 0.95em;">
-                                    <strong>RECOMMENDATION:</strong><br>
-                                    {results.get('recommendation', 'No data available')}
-                            </p>
-                        """, unsafe_allow_html=True)
-                    full_col = st.container()
+                st.markdown("### Explanation")
 
-                    with full_col:
-                        # --- THE SHADOW BOX (Bottom Section) ---
-                        st.markdown(f"""
-                            <div style="box-shadow: 0 4px 10px {shadow_color}; 
-                                padding: 25px; 
-                                border-radius: 30px; 
-                                border-block: 10px solid {border_color}; 
-                                background-color: white;">
-                                <h4 style="margin-top:0; color: Black;">CLINICAL ANALYSIS REPORT</h4>
-                                <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
-                                <div style="color: #444; line-height: 1.6;">
-                                <p style="font-size: 0.95em;"><strong>DESCRIPTION:</strong><br>{results.get('clinical_explanation', 'No data available')}</p>
-                            </div>
-                        """, unsafe_allow_html=True)
-                        
-                except Exception as e:
-                    st.error(f"System Error: {str(e)}")
+                if 'chart_values' in results:
+
+                    labels = [
+                        "Specific Gravity",
+                        "Albumin",
+                        "Sugar",
+                        "Serum Creatinine",
+                        "Hemoglobin"
+                    ]
+
+                    values = results['chart_values']
+
+                    if results["prediction"] == "CKD":
+                        colors = px.colors.sequential.Reds_r
+                    elif results["prediction"] == "Borderline Risk":
+                        colors = px.colors.sequential.Oranges_r
+                    else:
+                        colors = px.colors.sequential.Greens_r
+
+                    fig = px.pie(
+                        names=labels,
+                        values=values,
+                        hole=0.5,
+                        color_discrete_sequence=colors
+                    )
+
+                    fig.update_traces(
+                        hovertemplate="<b>%{label}</b><br>Contribution: %{percent}<extra></extra>"
+                    )
+
+                    fig.update_layout(
+                        title={'text':"<b>Biomarker Contribution</b>",'x':0.4},
+                        margin=dict(l=10,r=10,t=40,b=10),
+                        height=300,
+                        legend=dict(
+                            orientation="h",
+                            yanchor="bottom",
+                            y=-0.2,
+                            xanchor="center",
+                            x=0.5
+                        )
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.markdown(f"""
+                    <p style="font-size:0.95em;">
+                    <strong>RECOMMENDATION:</strong><br>
+                    {results.get('recommendation','No data available')}
+                    </p>
+                    """, unsafe_allow_html=True)
+
+            # CLINICAL REPORT
+                # --- THE SHADOW BOX (Bottom Section) ---
+                st.markdown(f"""
+                    <div style=" 
+                        padding: 25px;
+                        border-radius: 12px;
+                        border: 1px solid {border_color};
+                        background-color: white; 
+                        background-color: white;">
+                        <h4 style="margin-top:0; color: Black;">CLINICAL ANALYSIS REPORT</h4>
+                        <hr style="border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0;">
+                        <div style="color: #444; line-height: 1.6;">
+                        <p style="font-size: 0.95em;"><strong>DESCRIPTION:</strong><br>{results.get('clinical_explanation', 'No data available')}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"System Error: {str(e)}")
 def doctor_dashboard():
-    engine = get_inference_engine()
     # --- 1. Page Configuration ---
     st.set_page_config(page_title="Doctor Portal", layout="wide")
 
@@ -318,7 +380,7 @@ def doctor_dashboard():
             else:
                 st.info("No classification data recorded.")
     elif choice == "Analysis":
-        analysis_tool(engine)
+        analysis_tool()
     elif choice == "Records":
         st.subheader("🗂️ Patient Longitudinal Records")
 

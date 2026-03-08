@@ -8,7 +8,7 @@ from imblearn.over_sampling import SMOTE
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
-from source.plot_hospital_distribution import plot_train_distribution
+from source.plot_hospital_distribution import plot_smote_comparison
 
 
 # LOAD CLEAN DATASETS
@@ -119,19 +119,6 @@ def save_hospital_data(datasets, output_base):
         val_df.to_csv(f"{hospital_path}/val.csv", index=False)
         test_df.to_csv(f"{hospital_path}/test.csv", index=False)
 
-
-# PLOT TRAIN DISTRIBUTION
-def plot_distributions(A_train, B_train, C_train):
-
-    dist_dict = {
-        "Hospital A": A_train["classification"].value_counts(normalize=True).to_dict(),
-        "Hospital B": B_train["classification"].value_counts(normalize=True).to_dict(),
-        "Hospital C": C_train["classification"].value_counts(normalize=True).to_dict(),
-    }
-
-    plot_train_distribution(dist_dict)
-
-
 # MAIN PIPELINE
 def run_hospital_simulation():
 
@@ -155,6 +142,10 @@ def run_hospital_simulation():
     A_train = handle_missing_values(A_train)
     B_train = handle_missing_values(B_train)
     C_train = handle_missing_values(C_train)
+    
+    A_train_before = A_train.copy()
+    B_train_before = B_train.copy()
+    C_train_before = C_train.copy()
 
     # Apply SMOTE
     print("\nApplying SMOTE to balance training datasets...")
@@ -192,9 +183,12 @@ def run_hospital_simulation():
     show_distribution(C_train, "Hospital-C Train")
 
     # Plot distribution
-    plot_distributions(A_train, B_train, C_train)
+    print("\nGenerating SMOTE comparison plot...")
 
-    print("Plotting is done.........." )
+    plot_smote_comparison(
+        train_before=[A_train_before, B_train_before, C_train_before],
+        train_after=[A_train, B_train, C_train]
+    )
 
 
 # RUN

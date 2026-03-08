@@ -49,45 +49,69 @@ def generate_clinical_description(prediction, prob, feat_imp):
     percentages = [(v / total) * 100 for v in final_values]
 
     if prediction == "CKD":
-
         clinical_explanation = """
-The model predicts Chronic Kidney Disease because the biomarker interaction
-pattern resembles renal dysfunction.
+                The model predicts Chronic Kidney Disease because the biomarker interaction
+                pattern resembles renal dysfunction.
 
-• Serum Creatinine:
-  High creatinine indicates reduced glomerular filtration rate (GFR).
+                • Serum Creatinine:
+                    High creatinine indicates reduced glomerular filtration rate (GFR).
 
-• Albumin:
-  Protein leakage into urine indicates glomerular damage.
+                • Albumin:
+                    Protein leakage into urine indicates glomerular damage.
 
-• Specific Gravity:
-  Abnormal urine concentration suggests tubular dysfunction.
+                • Specific Gravity:
+                    Abnormal urine concentration suggests tubular dysfunction.
 
-• Hemoglobin:
-  Low hemoglobin may indicate anemia associated with CKD.
+                • Hemoglobin:
+                    Low hemoglobin may indicate anemia associated with CKD.
 
-• Sugar:
-  Persistent glycosuria increases diabetic nephropathy risk.
-"""
+                • Sugar:
+                    Persistent glycosuria increases diabetic nephropathy risk.
+        """
 
         recommendation = (
             "Evaluate eGFR, urine albumin-to-creatinine ratio, "
             "blood pressure control, and glycemic status."
         )
-
-    else:
-
+    elif prediction == "Borderline Risk":
         clinical_explanation = """
-The model predicts Non-CKD because renal biomarkers remain within
-physiological ranges.
+            The model detects an intermediate biomarker pattern that does not fully match
+            Chronic Kidney Disease but shows early indicators of renal stress.
 
-• Serum Creatinine indicates preserved kidney filtration.
-• Albumin levels do not indicate proteinuria.
-• Specific Gravity suggests normal urine concentration.
-• Hemoglobin is not indicative of CKD-related anemia.
-• Sugar levels do not suggest diabetic renal stress.
-"""
+            • Serum Creatinine:
+                Mild elevation may indicate early reduction in filtration efficiency.
 
+            • Albumin:
+                Trace or moderate albumin levels may suggest beginning stages of
+                glomerular leakage.
+
+            • Specific Gravity:
+                Slight abnormalities can indicate reduced urine concentrating ability.
+
+            • Hemoglobin:
+                Minor reductions may reflect early anemia associated with renal stress.
+
+            • Sugar:
+                Elevated glucose levels may increase long-term risk of diabetic
+                nephropathy affecting kidney function.
+        """
+
+        recommendation = (
+            "Recommend close monitoring of kidney biomarkers. "
+            "Repeat renal function tests, monitor blood pressure, "
+            "and evaluate metabolic risk factors such as diabetes."
+        )
+    else:
+        clinical_explanation = """
+            The model predicts Non-CKD because renal biomarkers remain within
+            physiological ranges.
+
+            • Serum Creatinine indicates preserved kidney filtration.
+            • Albumin levels do not indicate proteinuria.
+            • Specific Gravity suggests normal urine concentration.
+            • Hemoglobin is not indicative of CKD-related anemia.
+            • Sugar levels do not suggest diabetic renal stress.
+        """
         recommendation = (
             "Continue routine monitoring depending on patient risk factors."
         )
@@ -101,8 +125,27 @@ physiological ranges.
         "recommendation": recommendation
     }
 
+# Dashboard report code
+def get_dashboard_prediction(patient_data):
+    report = run_inference_xai(patient_data)
+    if report is None:
+        return {
+            "status": "error",
+            "message": "Prediction failed"
+        }
+    return {
+        "status": "success",
+        "prediction": report["prediction"],
+        "confidence": report["confidence"],
+        "probability": report["probability"],
+        "chart_values": report["chart_values"],
+        "primary_biomarkers": report["primary_biomarkers"],
+        "clinical_explanation": report["clinical_explanation"],
+        "recommendation": report["recommendation"]
+    }
+    
 # 4. MAIN XAI INFERENCE FUNCTION
-def run_inference_xai():
+def run_inference_xai(raw_patient=None):
     feature_names = [
         'age','bp','sg','al','su','rbc','pc','pcc','ba',
         'bgr','bu','sc','sod','pot','hemo','pcv',
@@ -118,16 +161,16 @@ def run_inference_xai():
     model.eval()
     print("Global model loaded.")
 
-    # Example CKD Patient
-    raw_patient = {
-        'age':60,'bp':180,'sg':1.005,'al':4,'su':3,
-        'rbc':'abnormal','pc':'abnormal','pcc':'present','ba':'present',
-        'bgr':250,'bu':90,'sc':5.5,'sod':130,'pot':5.8,'hemo':8,
-        'pcv':28,'wbcc':18000,'rbcc':3.0,'htn':'Yes','dm':'Yes',
-        'cad':'Yes','appet':'poor','pe':'Yes','ane':'Yes'
-    }
+    # Use dashboard patient if provided, otherwise use test patient
+    if raw_patient is None:
+        raw_patient = {
+            'age':60,'bp':180,'sg':1.005,'al':4,'su':3,
+            'rbc':'abnormal','pc':'abnormal','pcc':'present','ba':'present',
+            'bgr':250,'bu':90,'sc':5.5,'sod':130,'pot':5.8,'hemo':8,
+            'pcv':28,'wbcc':18000,'rbcc':3.0,'htn':'Yes','dm':'Yes',
+            'cad':'Yes','appet':'poor','pe':'Yes','ane':'Yes'
+        }
     # Preprocess Patient
-    scaler_path = os.path.join(BASE_DIR,"data","processed","scaler.pkl")
     x_scaled = preprocess_single_patient(raw_patient)
     test_patient = torch.tensor(x_scaled,dtype=torch.float32).view(1,-1)
 
@@ -175,6 +218,7 @@ def run_inference_xai():
 
     # Clinical Explanation
     report = generate_clinical_description(prediction,confidence,feat_imp)
+    report["probability"] = confidence
     print("\nClinical Interpretation:")
     print(report["clinical_explanation"])
     print("\nRecommendation:")
