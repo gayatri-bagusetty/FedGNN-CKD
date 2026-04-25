@@ -6,11 +6,11 @@ import numpy as np
 from torch_geometric.explain import Explainer, GNNExplainer
 
 # 1. PATH SETUP
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-sys.path.append(BASE_DIR)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+model_path = os.path.join(PROJECT_ROOT, "Server", "models", "global_model.pth")
 
 from data.models.gcn_model import GCN
-from notebooks.preprocessing import preprocess_single_patient
+from Client.preprocessing import preprocess_single_patient
 
 # 2. MODEL WRAPPER FOR EXPLAINER
 class WrappedModel(torch.nn.Module):
@@ -153,7 +153,7 @@ def run_inference_xai(raw_patient=None):
     ]
     # Load Model
     model = GCN(input_dim=24, hidden_dim=32, output_dim=2)
-    model_path = os.path.join(BASE_DIR,"data","models","global_model.pth")
+    model.load_state_dict(torch.load(model_path,map_location="cpu"))
     if not os.path.exists(model_path):
         print("global_model.pth not found")
         return

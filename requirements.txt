@@ -1,5 +1,22 @@
+torch
+torch-geometric
 numpy
 pandas
 scikit-learn
 matplotlib
 seaborn
+imbalanced-learn
+streamlit
+joblib
+networkx
+tqdm
+
+# Justification
+# torch, torch.nn, torch.functional → deep learning
+# torch_geometric → GNN + GNNExplainer
+# numpy, pandas → preprocessing & data handling
+# sklearn → metrics, preprocessing, split, similarity
+# matplotlib → plotting accuracy, ROC
+# imblearn (SMOTE) → class balancing
+# streamlit → dashboard UI
+# joblib → preprocessing model saving

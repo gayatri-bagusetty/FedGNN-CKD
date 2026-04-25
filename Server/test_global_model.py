@@ -3,7 +3,7 @@ import os
 import sys
 import json
 import numpy as np
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, roc_auc_score, roc_curve 
 
 # Reproducibility
 torch.manual_seed(42)
@@ -33,6 +33,7 @@ def test_on_hospital(global_model, hospital_name):
     global_model.eval()
     with torch.no_grad():
         out = global_model(graph.x, graph.edge_index)
+        probs = torch.softmax(out, dim=1)[:, 1].cpu().numpy()
         preds = out.argmax(dim=1).cpu().numpy()
         labels = graph.y.cpu().numpy()
     acc = accuracy_score(labels, preds)
@@ -43,12 +44,35 @@ def test_on_hospital(global_model, hospital_name):
         output_dict=True,
         zero_division=0
     )
+    roc_auc = roc_auc_score(labels, probs)
+    fpr, tpr, _ = roc_curve(labels, probs)
     num_samples = len(labels)
-    return acc, report, num_samples
+    return acc, report, num_samples, roc_auc, fpr, tpr, labels, probs
 
+# ROC-AUC PLOT
+def plot_combined_roc(all_labels, all_probs):
+    import matplotlib.pyplot as plt
+    os.makedirs("../data/plots", exist_ok=True)
+
+    fpr, tpr, _ = roc_curve(all_labels, all_probs)
+    roc_auc = roc_auc_score(all_labels, all_probs)
+
+    plt.figure()
+    plt.plot(fpr, tpr, label=f"Combined ROC (AUC = {roc_auc:.4f})")
+    plt.plot([0,1],[0,1],'--')
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("Global Model - Combined ROC Curve")
+    plt.legend()
+    plt.grid()
+    plt.savefig("../data/plots/combined_global_roc.png")
+    plt.close()
+
+    print(f"\nCombined ROC-AUC: {roc_auc:.4f}")
+    
 # Main Evaluation
 def main():
-    model_path = "../data/models/global_model.pth"
+    model_path = "models/global_model.pth"
     hospitals = ["hospital_A", "hospital_B", "hospital_C"]
 
     if not os.path.exists(model_path):
@@ -57,6 +81,8 @@ def main():
 
     # Load model
     global_model = GCN(input_dim=24, hidden_dim=32, output_dim=2).to(device)
+    all_labels = []
+    all_probs = []
 
     try:
         global_model.load_state_dict(
@@ -72,14 +98,16 @@ def main():
     hospital_results = []
     for h in hospitals:
         source_name = (
-            "UCI" if h == "hospital_A"
-            else "Kaggle" if h == "hospital_B"
-            else "Synthetic"
+            "Hospital A" if h == "hospital_A"
+            else "Hospital B" if h == "hospital_B"
+            else "Hospital C"
         )
         print(f"\nEvaluating {h} ({source_name})")
         result = test_on_hospital(global_model, h)
         if result:
-            acc, report, samples = result
+            acc, report, samples, roc_auc, fpr, tpr, labels, probs = result
+            all_labels.extend(labels)
+            all_probs.extend(probs)
             hospital_results.append({
                 "hospital": h,
                 "accuracy": acc,
@@ -90,7 +118,11 @@ def main():
             print(f"Precision: {report['CKD']['precision']:.4f}")
             print(f"Recall   : {report['CKD']['recall']:.4f}")
             print(f"F1-score : {report['CKD']['f1-score']:.4f}")
-
+            print(f"ROC-AUC  : {roc_auc:.4f}")
+            
+    if all_labels and all_probs:
+        plot_combined_roc(all_labels, all_probs)
+        
     # Federated Summary
     if hospital_results:
         accuracies = [h["accuracy"] for h in hospital_results]
@@ -114,8 +146,8 @@ def main():
             "micro_accuracy": micro_acc,
             "std_accuracy": std_acc
         }
-        os.makedirs("../data/results", exist_ok=True)
-        save_path = "../data/results/global_test_results.json"
+        os.makedirs("../results", exist_ok=True)
+        save_path = "../results/global_test_results.json"
         with open(save_path, "w") as f:
             json.dump(results, f, indent=4)
         print(f"\nResults saved → {save_path}")

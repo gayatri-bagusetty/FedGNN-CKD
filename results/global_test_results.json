@@ -1,0 +1,22 @@
+{
+    "hospitals": [
+        {
+            "hospital": "hospital_A",
+            "accuracy": 0.7714285714285715,
+            "samples": 35
+        },
+        {
+            "hospital": "hospital_B",
+            "accuracy": 0.6285714285714286,
+            "samples": 35
+        },
+        {
+            "hospital": "hospital_C",
+            "accuracy": 0.7222222222222222,
+            "samples": 36
+        }
+    ],
+    "macro_accuracy": 0.7074074074074074,
+    "micro_accuracy": 0.7075471698113207,
+    "std_accuracy": 0.05925453495907564
+}

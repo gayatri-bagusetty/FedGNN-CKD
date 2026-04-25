@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def load_results(path="../data/results/global_test_results.json"):
+def load_results(path="../results/global_test_results.json"):
     with open(path, "r") as f:
         return json.load(f)
 

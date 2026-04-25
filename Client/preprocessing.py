@@ -106,15 +106,10 @@ def encode_categorical(df):
 
 # NORMALIZE FEATURES
 def normalize_features(datasets):
-
     scaler = StandardScaler()
-
     combined = pd.concat(datasets)
-
     scaler.fit(combined[FEATURES])
-
     os.makedirs("../data/processed/", exist_ok=True)
-
     joblib.dump(scaler, "../data/processed/scaler.pkl")
     joblib.dump(FEATURES, "../data/processed/feature_order.pkl")
     # Print feature order
@@ -157,40 +152,35 @@ def preprocess_uploaded_dataset(csv_path):
     df = df[feature_order + [TARGET]]
     df = handle_missing_values(df)
     df = encode_categorical(df)
-    X = df[feature_order]
-    y = df[TARGET].astype(int)
-    X_scaled = scaler.transform(X)
-    return np.asarray(X_scaled,dtype=np.float32), np.asarray(y,dtype=np.int64)
+    # Save temporary preprocessed CSV
+    temp_csv_path = os.path.join("../data/processed", "temp_preprocessed.csv")
+    df.to_csv(temp_csv_path, index=False)
+
+    return temp_csv_path
 
 def preprocess_ckd_data():
-    print("\n===== PIPELINE STARTED =====\n")
     print("PREPROCESSING...........")
     print("--- Loading Datasets ---")
 
     uci_df = pd.read_csv("../data/raw/ckd_dataset.csv")
-    kaggle_df = pd.read_csv("../data/raw/kaggle_ckd.csv")
-    synthetic_df = pd.read_csv("../data/raw/synthetic_ckd.csv")
+    synthetic_df = pd.read_csv("../data/raw/ckd_synthetic.csv")
 
     print("UCI:",uci_df.shape)
-    print("Kaggle:",kaggle_df.shape)
     print("Synthetic:",synthetic_df.shape)
 
     # cleaning
     print("Cleaning the columns in dataset.......")
     uci_df = clean_columns(uci_df)
-    kaggle_df = clean_columns(kaggle_df)
     synthetic_df = clean_columns(synthetic_df)
 
     # missing values
     print("Handling missing values for each hospital data.......")
     uci_df = handle_missing_values(uci_df)
-    kaggle_df = handle_missing_values(kaggle_df)
     synthetic_df = handle_missing_values(synthetic_df)
 
     # encoding
     print("Encoding all categorical data in each hospital data.......")
     uci_df = encode_categorical(uci_df)
-    kaggle_df = encode_categorical(kaggle_df)
     synthetic_df = encode_categorical(synthetic_df)
 
     print("\n--- Saving Cleaned Raw Files ---")
@@ -198,12 +188,11 @@ def preprocess_ckd_data():
     os.makedirs("../data/processed/", exist_ok=True)
 
     uci_df.to_csv("../data/processed/uci_clean.csv",index=False)
-    kaggle_df.to_csv("../data/processed/kaggle_clean.csv",index=False)
     synthetic_df.to_csv("../data/processed/synthetic_clean.csv",index=False)
 
     # normalization
     print("\n--- Normalizing Features ---")
-    normalize_features([uci_df,kaggle_df,synthetic_df])
+    normalize_features([uci_df,synthetic_df])
     print("\n--- Preprocessing Completed Successfully ---")
 
 if __name__ == "__main__":

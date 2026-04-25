@@ -9,7 +9,7 @@ from database import save_patient_data, fetch_all_patients, get_total_patients, 
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.append(BASE_DIR)
-from notebooks.inference_xai import get_dashboard_prediction
+from Client.inference_xai import get_dashboard_prediction
     
 @st.fragment
 def analysis_tool():

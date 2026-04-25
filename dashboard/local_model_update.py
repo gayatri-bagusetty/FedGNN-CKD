@@ -5,21 +5,15 @@ import os
 import json
 from database import get_federated_state, update_federated_state
 
-
-# -------------------------------------------------------
 # Path setup
-# -------------------------------------------------------
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
-from notebooks.incremental_update_pipeline import run_incremental_update
+from Client.incremental_update_pipeline import run_admin_fl_update
 
-# -------------------------------------------------------
 # Persistent Metrics Storage
-# -------------------------------------------------------
 METRICS_FILE = os.path.join(ROOT_DIR, "data", "training_metrics.json")
-
 
 def load_metrics():
     if os.path.exists(METRICS_FILE):
@@ -43,10 +37,7 @@ def save_metrics(accuracy, analysis_time, last_update_time):
 
 
 def show_local_model_update():
-
-    # -------------------------------------------------------
     # Load persisted metrics
-    # -------------------------------------------------------
     stored_metrics = load_metrics()
 
     if "accuracy" not in st.session_state:
@@ -58,9 +49,7 @@ def show_local_model_update():
     if "last_update_time" not in st.session_state:
         st.session_state.last_update_time = stored_metrics["last_update_time"]
 
-    # -------------------------------------------------------
     # CSS
-    # -------------------------------------------------------
     st.markdown("""
         <style>
         .metric-box {
@@ -76,9 +65,7 @@ def show_local_model_update():
 
     st.title("🔄 Federated Model Training")
 
-    # -------------------------------------------------------
     # File Upload
-    # -------------------------------------------------------
     with st.container(border=True):
         st.subheader("📁 Data Source")
         uploaded_file = st.file_uploader(
@@ -90,9 +77,7 @@ def show_local_model_update():
 
     st.markdown("---")
 
-    # -------------------------------------------------------
     # Metrics
-    # -------------------------------------------------------
     col1, col2, col3 = st.columns(3)
 
     with col1:
@@ -116,9 +101,7 @@ def show_local_model_update():
             unsafe_allow_html=True
         )
 
-    # -------------------------------------------------------
     # Live Status
-    # -------------------------------------------------------
     st.subheader("📊 Live Status")
 
     left_col, right_col = st.columns([3, 1])
@@ -132,15 +115,10 @@ def show_local_model_update():
     if not uploaded_file:
         st.info("Upload a CSV file to begin federated training")
 
-    # -------------------------------------------------------
     # Execution
-    # -------------------------------------------------------
     if st.button(" Run Training Round", type="primary", disabled=uploaded_file is None):
-
         start_time = time.time()
-
         with st.spinner("Running Federated Training Pipeline..."):
-
             # Save uploaded CSV
             data_dir = os.path.join(ROOT_DIR, "data")
             os.makedirs(data_dir, exist_ok=True)
@@ -150,10 +128,8 @@ def show_local_model_update():
                 f.write(uploaded_file.getbuffer())
 
             # Call pipeline
-            acc, logs = run_incremental_update(csv_path)
-            # -------------------------------------------------------
+            acc, logs = run_admin_fl_update(csv_path)
             # Increment Federated Round (DB STORED)
-            # -------------------------------------------------------
             fed_state = get_federated_state()
             current_round = fed_state["round"]
             current_hospitals = fed_state["hospitals"]
@@ -194,9 +170,7 @@ def show_local_model_update():
 
             end_time = time.time()
 
-            # -------------------------------------------------------
             # Metrics + persistence
-            # -------------------------------------------------------
             accuracy_str = f"{acc:.2%}"
             analysis_time_str = f"{end_time - start_time:.2f} sec"
             last_update_str = time.strftime("%I:%M %p")

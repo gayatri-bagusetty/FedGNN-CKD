@@ -131,7 +131,7 @@ def build_patient_similarity_graph(
     return x, edge_index, new_node_index
 
 # Graph Construction Pipeline
-def construct_graph(file_path, k=8):
+def construct_graph(file_path, k):
     print(f"\nProcessing {file_path}")
     X, y = load_hospital_data(file_path)
     X_scaled = normalize_features(X)
@@ -204,7 +204,7 @@ def build_all_hospital_graphs():
             if not os.path.exists(file_path):
                 print(f"Skipping {file_path}")
                 continue
-            graph = construct_graph(file_path)
+            graph = construct_graph(file_path, k = 8)
             save_name = f"{hospital}_{split}.pt"
             save_path = os.path.join(
                 output_base,

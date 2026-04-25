@@ -63,7 +63,8 @@ def update_fedavg(local_model_path, global_model_path):
 
 # MAIN FEDERATED ROUND
 def main():
-    model_dir = "../data/models"
+    client_model_dir = "../data/models"
+    server_model_dir = "models"
     input_dim = 24
     hidden_dim = 32
     output_dim = 2
@@ -72,9 +73,9 @@ def main():
     model_B = GCN(input_dim, hidden_dim, output_dim).to(device)
     model_C = GCN(input_dim, hidden_dim, output_dim).to(device)
     try:
-        model_A.load_state_dict(torch.load(f"{model_dir}/model_A_ldp.pth", map_location=device))
-        model_B.load_state_dict(torch.load(f"{model_dir}/model_B_ldp.pth", map_location=device))
-        model_C.load_state_dict(torch.load(f"{model_dir}/model_C_ldp.pth", map_location=device))
+        model_A.load_state_dict(torch.load(f"{client_model_dir}/model_A_ldp.pth", map_location=device))
+        model_B.load_state_dict(torch.load(f"{client_model_dir}/model_B_ldp.pth", map_location=device))
+        model_C.load_state_dict(torch.load(f"{client_model_dir}/model_C_ldp.pth", map_location=device))
         print("Hospital models received")
     except Exception as e:
         print(f"Error loading models: {e}")
@@ -86,7 +87,8 @@ def main():
         [model_A, model_B, model_C],
         data_sizes
     )
-    save_path = os.path.join(model_dir, "global_model.pth")
+    os.makedirs(server_model_dir, exist_ok=True)
+    save_path = os.path.join(server_model_dir, "global_model.pth")
     torch.save(global_model.state_dict(), save_path)
     print(f"Global model saved → {save_path}")
 

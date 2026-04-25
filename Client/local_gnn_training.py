@@ -4,10 +4,10 @@ import os
 import sys
 import pandas as pd
 import matplotlib.pyplot as plt
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import roc_auc_score, roc_curve
 import random
 import numpy as np
-import torch
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
@@ -45,9 +45,50 @@ def compute_accuracy(model, graph):
         labels = graph.y.cpu()
     return accuracy_score(labels, preds)
 
+def compute_metrics(model, graph):
+    model.eval()
+    with torch.no_grad():
+        out = model(graph.x, graph.edge_index)
+        preds = out.argmax(dim=1).cpu().numpy()
+        labels = graph.y.cpu().numpy()
 
+    probs = F.softmax(out, dim=1)[:,1].cpu().numpy()
+    roc_auc = roc_auc_score(labels, probs)
+    fpr, tpr, _ = roc_curve(labels, probs)
+    precision = precision_score(labels, preds, zero_division=0)
+    recall = recall_score(labels, preds, zero_division=0)
+    f1 = f1_score(labels, preds, zero_division=0)
+
+    return roc_auc, precision, recall, f1, fpr, tpr
+
+def plot_roc_curve(fpr, tpr, roc_auc, hospital_name):
+    plt.figure(figsize=(6,5))
+
+    plt.plot(fpr, tpr,
+             linewidth=2,
+             label=f"{hospital_name} (AUC = {roc_auc:.4f})")
+
+    plt.plot([0,1], [0,1],
+             linestyle='--',
+             linewidth=1,
+             label="Random Classifier")
+
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title(f"{hospital_name} - ROC Curve")
+
+    plt.legend(loc="lower right")
+    plt.grid(alpha=0.3)
+
+    save_path = f"../data/plots/{hospital_name}_roc.png"
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()
+
+    print(f"{hospital_name} ROC-AUC: {roc_auc:.4f}")
+    print(f"Saved ROC curve: {save_path}")
+    
 def train_local_model(train_graph_path, val_graph_path,
-                      epochs=60, lr=0.01, hospital_name="Hospital"):
+                      epochs=100, lr=0.01, hospital_name="Hospital"):
 
     if not os.path.exists(train_graph_path) or not os.path.exists(val_graph_path):
         print(f"Error: Graph files for {hospital_name} not found.")
@@ -83,7 +124,7 @@ def train_local_model(train_graph_path, val_graph_path,
     # ===== EARLY STOPPING SETUP =====
     best_val_loss = float("inf")
     best_model_state = None
-    patience = 5
+    patience = 15
     patience_counter = 0
 
     # ===== RESOURCE MONITOR =====
@@ -130,6 +171,18 @@ def train_local_model(train_graph_path, val_graph_path,
     if best_model_state is not None:
         model.load_state_dict(best_model_state)
 
+    # ===== FINAL VALIDATION METRICS =====
+    val_acc = compute_accuracy(model, val_graph)
+    roc_auc, val_precision, val_recall, val_f1, fpr, tpr = compute_metrics(model, val_graph)
+
+    print(f"\n[{hospital_name}] Validation Metrics")
+    print(f"Accuracy : {val_acc:.4f}")
+    print(f"Precision: {val_precision:.4f}")
+    print(f"Recall   : {val_recall:.4f}")
+    print(f"F1-score : {val_f1:.4f}")
+    print(f"ROC-AUC  : {roc_auc:.4F}")
+    
+    plot_roc_curve(fpr, tpr, roc_auc, hospital_name)
     # ===== RESOURCE REPORT =====
     training_time = monitor.stop_timer()
     memory_used = monitor.memory_usage_mb()
@@ -138,7 +191,7 @@ def train_local_model(train_graph_path, val_graph_path,
     print(f"Training Time : {training_time:.2f} seconds")
     print(f"Memory Usage  : {memory_used:.2f} MB")
 
-    return model, train_acc_list, val_acc_list, training_time, memory_used
+    return model, train_acc_list, val_acc_list, training_time, memory_used, val_acc, val_precision, val_recall, val_f1, roc_auc
 
 def plot_accuracy(train_acc, val_acc, hospital_name):
     plt.figure()
@@ -150,7 +203,7 @@ def plot_accuracy(train_acc, val_acc, hospital_name):
     plt.legend()
     plt.grid(True)
 
-    save_path = f"../data/graph/{hospital_name}_accuracy.png"
+    save_path = f"../data/plots/{hospital_name}_accuracy.png"
     plt.savefig(save_path)
     plt.close()
     print(f"Saved accuracy plot: {save_path}")
@@ -163,6 +216,8 @@ def main():
 
     hospitals = ['A', 'B', 'C']
     resource_metrics = {}
+    metrics_records = []
+    os.makedirs("../data/file", exist_ok=True)
 
     for h in hospitals:
         train_graph_path = os.path.join(graph_dir, f"hospital_{h}_train.pt")
@@ -170,7 +225,7 @@ def main():
 
         print(f"\n--- Training Hospital {h} ---")
 
-        model, train_acc, val_acc, training_time, memory_used = train_local_model(
+        model, train_acc, val_acc, training_time, memory_used, val_acc_final, precision, recall, f1, roc_auc = train_local_model(
             train_graph_path,
             val_graph_path,
             hospital_name=f"Hospital {h}"
@@ -186,8 +241,22 @@ def main():
                 "time": training_time,
                 "memory": memory_used
             }
+            metrics_records.append({
+                "hospital": f"Hospital {h}",
+                "accuracy": val_acc_final,
+                "precision": precision,
+                "recall": recall,
+                "f1_score": f1,
+                "roc_auc": roc_auc, 
+                "training_time_sec": training_time,
+                "memory_mb": memory_used
+            })
 
             plot_accuracy(train_acc, val_acc, f"hospital_{h}")
+    metrics_df = pd.DataFrame(metrics_records)
+    metrics_path = "../data/file/local_training_metrics.csv"
+    metrics_df.to_csv(metrics_path, index=False)
+    print(f"\nLocal training metrics saved → {metrics_path}")
     plot_resource_efficiency(resource_metrics)
 
     print("\nLocal models trained and graphs generated successfully.")
